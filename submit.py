@@ -8,23 +8,6 @@ from analysis.utils import write_root
 from analysis.processors.base import BaseProcessor
 
 
-def main(args):
-    with open(args.partition_json) as f:
-        partition_fileset = json.load(f)
-    out = processor.run_uproot_job(
-        partition_fileset,
-        treename="Events",
-        processor_instance=BaseProcessor(workflow=args.workflow, year=args.year),
-        executor=processor.futures_executor,
-        executor_args={"schema": NanoAODSchema, "workers": 4},
-    )
-    savepath = f"{args.output_path}/{args.dataset}"
-    if args.output_format == "coffea":
-        save(out, f"{savepath}.coffea")
-    elif args.output_format == "root":
-        write_root(out, savepath, args)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -77,8 +60,37 @@ if __name__ == "__main__":
         "--output_format",
         type=str,
         default="coffea",
-        choices=["coffea", "root"],
+        choices=["coffea", "parquet"],
         help="format of output histogram",
     )
     args = parser.parse_args()
-    main(args)
+
+    # set output location (used when --output_format parquet)
+    if args.eos:
+        output_location = f"root://eosuser.cern.ch//eos/user/{args.user[0]}/{args.user}/higgscharm/outputs/"
+    else:
+        output_location = (
+            f"/afs/cern.ch/user/{args.user[0]}/{args.user}/public/higgscharm/outputs/"
+        )
+
+    # load partition_fileset,
+    with open(args.partition_json) as f:
+        partition_fileset = json.load(f)
+
+    # run processor
+    out = processor.run_uproot_job(
+        partition_fileset,
+        treename="Events",
+        processor_instance=BaseProcessor(
+            workflow=args.workflow,
+            year=args.year,
+            output_format=args.output_format,
+            output_location=output_location,
+        ),
+        executor=processor.futures_executor,
+        executor_args={"schema": NanoAODSchema, "workers": 4},
+    )
+
+    # save output
+    savepath = f"{args.output_path}/{args.dataset}"
+    save(out, f"{savepath}.coffea")

@@ -55,7 +55,7 @@ if __name__ == "__main__":
         "--output_format",
         type=str,
         default="coffea",
-        choices=["coffea"],
+        choices=["coffea", "parquet"],
         help="format of output histogram",
     )
     args = parser.parse_args()

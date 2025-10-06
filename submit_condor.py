@@ -29,7 +29,7 @@ def move_proxy() -> str:
 def submit_condor(args):
     """Build condor files. Optionally submit condor job"""
     print(f"Creating {args.workflow}-{args.year}-{args.dataset} condor file")
-    
+
     jobname = f"{args.workflow}_{args.dataset}"
 
     # make condor and log directories
@@ -150,7 +150,7 @@ if __name__ == "__main__":
         "--output_format",
         type=str,
         default="coffea",
-        choices=["coffea", "root"],
+        choices=["coffea", "parquet"],
         help="format of output histogram",
     )
     args = parser.parse_args()

@@ -3,6 +3,7 @@ import numpy as np
 import awkward as ak
 from coffea import processor
 from coffea.analysis_tools import PackedSelection, Weights
+from analysis.utils import dump_pa_table
 from analysis.workflows.config import WorkflowConfigBuilder
 from analysis.histograms import HistBuilder, fill_histograms
 from analysis.corrections.jetvetomaps import apply_jetvetomaps
@@ -21,7 +22,6 @@ from analysis.selections import (
 )
 
 
-
 def update(events, collections):
     """Return a shallow copy of events array with some collections swapped out"""
     out = events
@@ -34,11 +34,16 @@ class BaseProcessor(processor.ProcessorABC):
     def __init__(
         self,
         workflow: str,
-        year: str = "2017",
+        year: str,
+        output_format: str,
+        output_location: str,
     ):
+        self.workflow = workflow
         self.year = year
         self.year_key = year[:4]
         self.run = "2" if year.startswith("201") else "3"
+        self.output_format = output_format
+        self.output_location = output_location
 
         config_builder = WorkflowConfigBuilder(workflow=workflow)
         self.workflow_config = config_builder.build_workflow_config()
@@ -60,28 +65,119 @@ class BaseProcessor(processor.ProcessorABC):
             # add genPartFlav fields to leptons (QCD Estimation)
             events["Muon", "genPartFlav"] = ak.zeros_like(events.Muon.pt)
             events["Electron", "genPartFlav"] = ak.zeros_like(events.Electron.pt)
-            
+
         if not self.is_mc:
             return self.process_shift(events, shift_name="nominal")
 
         # define object-level shifts
-        shifts = [({"Jet": events.Jet, "MET": events.MET, "Muon": events.Muon, "Tau": events.Tau}, "nominal")]
-        if self.workflow_config.corrections_config["apply_obj_syst"]:
-            if self.run == "2":
-                shifts.extend(
-                    [
-                        ({"Jet": events.Jet, "MET": events.MET.rochester.up, "Muon": events.Muon.rochester.up, "Tau": events.Tau}, f"CMS_rochester_{self.year_key}Up"),
-                        ({"Jet": events.Jet, "MET": events.MET.rochester.down, "Muon": events.Muon.rochester.down, "Tau": events.Tau}, f"CMS_rochester_{self.year_key}Down"),
-                        ({"Jet": events.Jet.JES_jes.up, "MET": events.MET.JES_jes.up, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_scale_j_{self.year_key}Up"),
-                        ({"Jet": events.Jet.JES_jes.down, "MET": events.MET.JES_jes.down, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_scale_j_{self.year_key}Down"),
-                        ({"Jet": events.Jet.JER.up, "MET": events.MET.JER.up, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_res_j_{self.year_key}Up"),
-                        ({"Jet": events.Jet.JER.down, "MET": events.MET.JER.down, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_res_j_{self.year_key}Down"),
-                        ({"Jet": events.Jet, "MET": events.MET.MET_UnclusteredEnergy.up, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_met_unclustered_{self.year_key}Up"),
-                        ({"Jet": events.Jet, "MET": events.MET.MET_UnclusteredEnergy.down, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_met_unclustered_{self.year_key}Down"),
-                        ({"Jet": events.Jet, "MET": events.MET.tau_energy.up, "Muon": events.Muon, "Tau": events.Tau.tau_energy.up}, f"CMS_t_energy_{self.year_key}Up"),
-                        ({"Jet": events.Jet, "MET": events.MET.tau_energy.down, "Muon": events.Muon, "Tau": events.Tau.tau_energy.down}, f"CMS_t_energy_{self.year_key}Down"),
-                    ]
-                )
+        shifts = [
+            (
+                {
+                    "Jet": events.Jet,
+                    "MET": events.MET,
+                    "Muon": events.Muon,
+                    "Tau": events.Tau,
+                },
+                "nominal",
+            )
+        ]
+        if self.output_format == "coffea":
+            if self.workflow_config.corrections_config["apply_obj_syst"]:
+                if self.run == "2":
+                    shifts.extend(
+                        [
+                            (
+                                {
+                                    "Jet": events.Jet,
+                                    "MET": events.MET.rochester.up,
+                                    "Muon": events.Muon.rochester.up,
+                                    "Tau": events.Tau,
+                                },
+                                f"CMS_rochester_{self.year_key}Up",
+                            ),
+                            (
+                                {
+                                    "Jet": events.Jet,
+                                    "MET": events.MET.rochester.down,
+                                    "Muon": events.Muon.rochester.down,
+                                    "Tau": events.Tau,
+                                },
+                                f"CMS_rochester_{self.year_key}Down",
+                            ),
+                            (
+                                {
+                                    "Jet": events.Jet.JES_jes.up,
+                                    "MET": events.MET.JES_jes.up,
+                                    "Muon": events.Muon,
+                                    "Tau": events.Tau,
+                                },
+                                f"CMS_scale_j_{self.year_key}Up",
+                            ),
+                            (
+                                {
+                                    "Jet": events.Jet.JES_jes.down,
+                                    "MET": events.MET.JES_jes.down,
+                                    "Muon": events.Muon,
+                                    "Tau": events.Tau,
+                                },
+                                f"CMS_scale_j_{self.year_key}Down",
+                            ),
+                            (
+                                {
+                                    "Jet": events.Jet.JER.up,
+                                    "MET": events.MET.JER.up,
+                                    "Muon": events.Muon,
+                                    "Tau": events.Tau,
+                                },
+                                f"CMS_res_j_{self.year_key}Up",
+                            ),
+                            (
+                                {
+                                    "Jet": events.Jet.JER.down,
+                                    "MET": events.MET.JER.down,
+                                    "Muon": events.Muon,
+                                    "Tau": events.Tau,
+                                },
+                                f"CMS_res_j_{self.year_key}Down",
+                            ),
+                            (
+                                {
+                                    "Jet": events.Jet,
+                                    "MET": events.MET.MET_UnclusteredEnergy.up,
+                                    "Muon": events.Muon,
+                                    "Tau": events.Tau,
+                                },
+                                f"CMS_met_unclustered_{self.year_key}Up",
+                            ),
+                            (
+                                {
+                                    "Jet": events.Jet,
+                                    "MET": events.MET.MET_UnclusteredEnergy.down,
+                                    "Muon": events.Muon,
+                                    "Tau": events.Tau,
+                                },
+                                f"CMS_met_unclustered_{self.year_key}Down",
+                            ),
+                            (
+                                {
+                                    "Jet": events.Jet,
+                                    "MET": events.MET.tau_energy.up,
+                                    "Muon": events.Muon,
+                                    "Tau": events.Tau.tau_energy.up,
+                                },
+                                f"CMS_t_energy_{self.year_key}Up",
+                            ),
+                            (
+                                {
+                                    "Jet": events.Jet,
+                                    "MET": events.MET.tau_energy.down,
+                                    "Muon": events.Muon,
+                                    "Tau": events.Tau.tau_energy.down,
+                                },
+                                f"CMS_t_energy_{self.year_key}Down",
+                            ),
+                        ]
+                    )
         return processor.accumulate(
             self.process_shift(update(events, collections), name)
             for collections, name in shifts
@@ -107,7 +203,9 @@ class BaseProcessor(processor.ProcessorABC):
             # apply jet veto maps and update missing energy
             apply_jetvetomaps(events, year)
 
-        object_selector = ObjectSelector(self.workflow_config.object_selection, year, self.run)
+        object_selector = ObjectSelector(
+            self.workflow_config.object_selection, year, self.run
+        )
         objects = object_selector.select_objects(events)
         # ----------------------------------------------------------------------------------
         # event selection
@@ -177,18 +275,58 @@ class BaseProcessor(processor.ProcessorABC):
                 variables_map = {}
                 for variable, axis in self.histogram_config.axes.items():
                     variables_map[variable] = eval(axis.expression)[category_mask]
-                fill_histograms(
-                    histogram_config=self.histogram_config,
-                    weights_container=weights_container,
-                    variables_map=variables_map,
-                    histograms=histograms,
-                    shift_name=shift_name,
-                    category=category,
-                    is_mc=is_mc,
-                    flow=self.histogram_config.flow,
-                )
-        # define output dictionary accumulator
-        output["histograms"] = histograms
+
+                if self.output_format == "coffea":
+                    fill_histograms(
+                        histogram_config=self.histogram_config,
+                        weights_container=weights_container,
+                        variables_map=variables_map,
+                        histograms=histograms,
+                        shift_name=shift_name,
+                        category=category,
+                        is_mc=is_mc,
+                        flow=self.histogram_config.flow,
+                    )
+                elif self.output_format == "parquet":
+                    # add weights to variables map
+                    if shift_name == "nominal":
+                        if is_mc:
+                            variations = ["nominal"] + list(
+                                weights_container.variations
+                            )
+                            for variation in variations:
+                                if variation == "nominal":
+                                    variables_map[f"weight_nominal"] = (
+                                        weights_container.weight()
+                                    )
+                                    for (
+                                        partial_weight
+                                    ) in weights_container.weightStatistics:
+                                        variables_map[f"weight_{partial_weight}"] = (
+                                            weights_container.partial_weight(
+                                                include=[partial_weight]
+                                            )
+                                        )
+                                else:
+                                    variables_map[f"weight_{variation}"] = (
+                                        weights_container.weight(modifier=variation)
+                                    )
+                        # save parquet files
+                        fname = (
+                            events.behavior[
+                                "__events_factory__"
+                            ]._partition_key.replace("/", "_")
+                            + ".parquet"
+                        )
+                        subdirs = [self.workflow, self.year, dataset, category]
+                        dump_pa_table(
+                            variables_map, fname, self.output_location, subdirs
+                        )
+
+        if self.output_format == "coffea":
+            # define output dictionary accumulator
+            output["histograms"] = histograms
+
         return output
 
     def postprocess(self, accumulator):
