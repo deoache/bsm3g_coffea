@@ -27,7 +27,7 @@ done
 CMD_ARGS="--workflow ${ARGS[workflow]} --year ${ARGS[year]} --output_path ${ARGS[output_path]} --output_format ${ARGS[output_format]} --dataset ${ARGS[dataset]}_$JOBID --user ${ARGS[user]}"
 
 if [ "${ARGS[eos]}" = "True" ]; then
-    OPTS="$OPTS --eos"
+    CMD_ARGS="$CMD_ARGS --eos"
 fi
 
 # From partitions.json (which contains the partitioning of the full dataset across jobs),
