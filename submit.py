@@ -63,6 +63,16 @@ if __name__ == "__main__":
         choices=["coffea", "parquet"],
         help="format of output histogram",
     )
+    parser.add_argument(
+        "--eos",
+        action="store_true",
+        help="Enable saving outputs to /eos",
+    )
+    parser.add_argument(
+        "--user",
+        type=str,
+        help="User name",
+    )
     args = parser.parse_args()
 
     # set output location (used when --output_format parquet)

@@ -19,12 +19,16 @@ WORKDIR=`pwd`
 declare -A ARGS
 
 # Extract specific job parameters from arguments.json
-for key in workflow year output_path output_format dataset; do
+for key in workflow year output_path output_format dataset eos user; do
     ARGS[$key]=$(python3 -c "import json; print(json.load(open('$WORKDIR/arguments.json'))['$key'])")
 done
 
 # Build the full set of command-line parameters for submit.py (Add the JOBID suffix to the dataset name to uniquely identify the output)
-CMD_ARGS="--workflow ${ARGS[workflow]} --year ${ARGS[year]} --output_path ${ARGS[output_path]} --output_format ${ARGS[output_format]} --dataset ${ARGS[dataset]}_$JOBID"
+CMD_ARGS="--workflow ${ARGS[workflow]} --year ${ARGS[year]} --output_path ${ARGS[output_path]} --output_format ${ARGS[output_format]} --dataset ${ARGS[dataset]}_$JOBID --user ${ARGS[user]}"
+
+if [ "${ARGS[eos]}" = "True" ]; then
+    OPTS="$OPTS --eos"
+fi
 
 # From partitions.json (which contains the partitioning of the full dataset across jobs),
 # extract only the subset assigned to the current JOBID and save it as partition_fileset.json.
