@@ -68,6 +68,7 @@ def submit_condor(args):
 
     # build and save arguments json
     args.output_path = make_output_directory(args)
+    args.user = os.environ["USER"]
     args_file = job_dir / "arguments.json"
     with open(args_file, "w") as json_file:
         json.dump(vars(args), json_file, indent=4)
