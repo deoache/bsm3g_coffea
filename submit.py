@@ -77,10 +77,10 @@ if __name__ == "__main__":
 
     # set output location (used when --output_format parquet)
     if args.eos:
-        output_location = f"root://eosuser.cern.ch//eos/user/{args.user[0]}/{args.user}/higgscharm/outputs/"
+        output_location = f"root://eosuser.cern.ch//eos/user/{args.user[0]}/{args.user}/bsm3g_coffea/outputs/"
     else:
         output_location = (
-            f"/afs/cern.ch/user/{args.user[0]}/{args.user}/public/higgscharm/outputs/"
+            f"/afs/cern.ch/user/{args.user[0]}/{args.user}/public/bsm3g_coffea/outputs/"
         )
 
     # load partition_fileset,
