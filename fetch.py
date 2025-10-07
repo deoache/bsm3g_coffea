@@ -69,5 +69,5 @@ if __name__ == "__main__":
     subprocess.run(cmd, shell=True)
 
     # add signal samples
-    signal_cmd = f"python3 analysis/filesets/build_signal_filesets.py --year {args.year} --site {args.site}"
+    signal_cmd = f"python3 -m analysis.filesets.build_signal_filesets --year {args.year} --site {args.site}"
     subprocess.run(signal_cmd, shell=True)
