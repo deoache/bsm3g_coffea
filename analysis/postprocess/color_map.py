@@ -57,7 +57,7 @@ if __name__ == "__main__":
     ]
     color_map_file = Path.cwd() / "analysis" / "postprocess" / "color_map.yaml"
     processes = get_framework_processes()
-    
+
     if not color_map_file.exists():
         gen = color_generator(base_colors=cms_colors)
         color_map = {p: next(gen) for p in processes}
