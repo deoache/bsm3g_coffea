@@ -5,6 +5,7 @@ import json
 import subprocess
 import numpy as np
 from pathlib import Path
+from collections import defaultdict
 from analysis.workflows.config import WorkflowConfigBuilder
 
 
@@ -70,7 +71,7 @@ def get_dataset_key(dataset, year):
             if dataset_config[dataset_key]["process"] == "Data":
                 return dataset_config[dataset_key]["key"]
             else:
-                return "MC"
+                return "mc"
 
 
 def get_dataset_era(dataset, year):
@@ -203,3 +204,52 @@ def get_process_maps(workflow_config, year):
                 process_name_map[sample_process] = sample
                 key_process_map[sample_key] = sample_process
     return sorted(processes), process_name_map, key_process_map
+
+
+def get_workflow_key_process_map(workflow_config, year):
+    datasets = workflow_config.datasets
+    dataset_configs = get_dataset_config(year)
+    sample_keys = np.concatenate(list(datasets.values())).tolist()
+
+    processes = []
+    key_process_map = {}
+
+    for sample in dataset_configs:
+        sample_process = dataset_configs[sample]["process"]
+        if sample_process == "Data":
+            continue
+        sample_key = dataset_configs[sample]["key"]
+        if isinstance(sample_key, str):
+            if sample_key in sample_keys:
+                if sample_process not in processes:
+                    processes.append(sample_process)
+                    key_process_map[sample_key] = sample_process
+        elif isinstance(sample_key, list):
+            for sk in sample_key:
+                if sk in sample_keys:
+                    if sample_process not in processes:
+                        processes.append(sample_process)
+                        key_process_map[sk] = sample_process
+
+    return key_process_map
+
+
+def get_process_era_map(year):
+    dataset_configs = get_dataset_config(year)
+    process_era_map = {}
+    for sample in dataset_configs:
+        sample_process = dataset_configs[sample]["process"]
+        if sample_process not in process_era_map:
+            process_era_map[sample_process] = dataset_configs[sample]["era"]
+
+    return process_era_map
+
+
+def get_process_sample_map(datasets: list[str], year: str) -> dict[str, list[str]]:
+    """map processes to their corresponding samples based on dataset config"""
+    dataset_configs = get_dataset_config(year)
+    process_sample_map = defaultdict(list)
+    for sample in datasets:
+        config = dataset_configs[sample]
+        process_sample_map[config["process"]].append(sample)
+    return dict(process_sample_map)

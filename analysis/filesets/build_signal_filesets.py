@@ -3,6 +3,7 @@ import json
 import argparse
 import subprocess
 from pathlib import Path
+from analysis.filesets.utils import get_dataset_config
 
 
 def get_signal_fileset(query):
@@ -48,15 +49,7 @@ if __name__ == "__main__":
 
     # open dataset configs
     filesets_dir = Path.cwd() / "analysis" / "filesets"
-    run_key = (
-        "Run3"
-        if args.year.startswith("2022") or args.year.startswith("2023")
-        else "Run2"
-    )
-    nano_version = "nanov9" if run_key == "Run2" else "nanov12"
-    datasets_dir = filesets_dir / f"{args.year}_{nano_version}.yaml"
-    with open(datasets_dir, "r") as f:
-        dataset_configs = yaml.safe_load(f)
+    dataset_config = get_dataset_config(args.year)
 
     # load already generated fileset
     fileset_file = filesets_dir / f"fileset_{args.year}_NANO_lxplus.json"
@@ -64,9 +57,9 @@ if __name__ == "__main__":
         new_dataset = json.load(f)
 
     # query and add signal samples to fileset
-    for sample in list(dataset_configs.keys()):
-        if sample.lower().startswith("signal"):
-            query = dataset_configs[sample]["query"]
+    for sample in list(dataset_config.keys()):
+        if dataset_config[sample]["era"] == "signal":
+            query = dataset_config[sample]["query"]
             files = get_signal_fileset(query)
             files = [f"{args.site}/{f}" for f in files]
             print(f"Adding sample {sample}")
