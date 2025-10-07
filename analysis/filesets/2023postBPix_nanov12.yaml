@@ -47,223 +47,223 @@ Muon1v2D:
   key: muon
   xsec: None
 DYJetsToLL_inclusive_50:
-  era: MC
+  era: mc
   query: DYto2L-2Jets_MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v3/NANOAODSIM
   process: DYJetsToLL
   key: dy_inclusive
   xsec: 6688.0
 DYJetsToLL_inclusive_10to50:
-  era: MC
+  era: mc
   query: DYto2L-2Jets_MLL-10to50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2_ext1-v3/NANOAODSIM
   process: DYJetsToLL
   key: dy_inclusive
   xsec: 20950.0
 DYJetsToLL_4to50_HT40to70:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-4to50_HT-40to70_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: none
   xsec: 911.4
 DYJetsToLL_4to50_HT70to100:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-4to50_HT-70to100_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 346.6
 DYJetsToLL_4to50_HT100to400:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-4to50_HT-100to400_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 316.8
 DYJetsToLL_4to50_HT400to800:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-4to50_HT-400to800_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 5.649
 DYJetsToLL_4to50_HT800to1500:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-4to50_HT-800to1500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 0.4204
 DYJetsToLL_4to50_HT1500to2500:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-4to50_HT-1500to2500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 0.02079
 DYJetsToLL_4to50_HT2500:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-4to50_HT-2500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 0.00107
 DYJetsToLL_50to120_HT40to70:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-50to120_HT-40to70_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v3/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 316.7
 DYJetsToLL_50to120_HT70to100:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-50to120_HT-70to100_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 140.1
 DYJetsToLL_50to120_HT100to400:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-50to120_HT-100to400_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 179.6
 DYJetsToLL_50to120_HT400to800:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-50to120_HT-400to800_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v3/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 6.742
 DYJetsToLL_50to120_HT800to1500:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-50to120_HT-800to1500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 0.693
 DYJetsToLL_50to120_HT1500to2500:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-50to120_HT-1500to2500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 0.05047
 DYJetsToLL_50to120_HT2500:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-50to120_HT-2500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 0.00346
 DYJetsToLL_120_HT40to70:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-120_HT-40to70_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 4.6
 DYJetsToLL_120_HT70to100:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-120_HT-70to100_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 2.205
 DYJetsToLL_120_HT100to400:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-120_HT-100to400_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 3.352
 DYJetsToLL_120_HT400to800:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-120_HT-400to800_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 0.1757
 DYJetsToLL_120_HT800to1500:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-120_HT-800to1500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 0.02089
 DYJetsToLL_120_HT1500to2500:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-120_HT-1500to2500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 0.001697
 DYJetsToLL_120_HT2500:
-  era: MC
+  era: mc
   query: DYto2L-4Jets_MLL-120_HT-2500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 0.0001247
 TTto2L2Nu:
-  era: MC
+  era: mc
   query: TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v3/NANOAODSIM
   process: tt
   key: tt
   xsec: 97.78
 TTto4Q:
-  era: MC
+  era: mc
   query: TTto4Q_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v3/NANOAODSIM
   process: tt
   key: tt
   xsec: 418.61
 TTtoLNu2Q:
-  era: MC
+  era: mc
   query: TTtoLNu2Q_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v3/NANOAODSIM
   process: tt
   key: tt
   xsec: 404.63
 TWminusto2L2Nu:
-  era: MC
+  era: mc
   query: TWminusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v3/NANOAODSIM
   process: SingleTop
   key: singletop
   xsec: 4.66
 TWminusto4Q:
-  era: MC
+  era: mc
   query: TWminusto4Q_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v3/NANOAODSIM
   process: SingleTop
   key: singletop
   xsec: 19.98
 TWminustoLNu2Q:
-  era: MC
+  era: mc
   query: TWminustoLNu2Q_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v3/NANOAODSIM
   process: SingleTop
   key: singletop
   xsec: 19.31
 TbarBQ:
-  era: MC
+  era: mc
   query: TbarBQ_t-channel_4FS_TuneCP5_13p6TeV_powheg-madspin-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: SingleTop
   key: singletop
   xsec: 87.20
 TbarWplusto2L2Nu:
-  era: MC
+  era: mc
   query: TbarWplusto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: SingleTop
   key: singletop
   xsec: 4.66
 TbarWplusto4Q:
-  era: MC
+  era: mc
   query: TbarWplusto4Q_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: SingleTop
   key: singletop
   xsec: 19.98
 TbarWplustoLNu2Q:
-  era: MC
+  era: mc
   query: TbarWplustoLNu2Q_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: SingleTop
   key: singletop
   xsec: 19.31
 TBbarQ:
-  era: MC
+  era: mc
   query: TBbarQ_t-channel_4FS_TuneCP5_13p6TeV_powheg-madspin-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: SingleTop
   key: singletop
   xsec: 145.00
 WW:
-  era: MC
+  era: mc
   query: WW_TuneCP5_13p6TeV_pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v2/NANOAODSIM
   process: Diboson
   key: diboson
   xsec: 122.30
 WZ:
-  era: MC
+  era: mc
   query: WZ_TuneCP5_13p6TeV_pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v2/NANOAODSIM
   process: Diboson
   key: diboson
   xsec: 54.30
 ZZ:
-  era: MC
+  era: mc
   query: ZZ_TuneCP5_13p6TeV_pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v2-v2/NANOAODSIM
   process: Diboson
   key: diboson
