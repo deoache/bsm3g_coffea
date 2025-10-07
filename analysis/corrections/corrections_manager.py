@@ -162,8 +162,8 @@ def weight_manager(pruned_ev, year, run, workflow_config, variation, dataset):
                     dataset=dataset,
                 )
 
-        if "ISRWeight" in weights_config:
-            if weights_config["ISRWeight"]:
+        if "ISRWeight2D" in weights_config:
+            if weights_config["ISRWeight2D"]:
                 add_isr_weight(
                     events=pruned_ev,
                     weights=weights_container,
@@ -172,6 +172,28 @@ def weight_manager(pruned_ev, year, run, workflow_config, variation, dataset):
                     dataset=dataset,
                     fit=False,
                     one_dim=False
+                )
+        if "ISRWeightFit2D" in weights_config:
+            if weights_config["ISRWeightFit2D"]:
+                add_isr_weight(
+                    events=pruned_ev,
+                    weights=weights_container,
+                    year=year,
+                    variation=variation,
+                    dataset=dataset,
+                    fit=True,
+                    one_dim=False
+                )
+        if "ISRWeight1D" in weights_config:
+            if weights_config["ISRWeight1D"]:
+                add_isr_weight(
+                    events=pruned_ev,
+                    weights=weights_container,
+                    year=year,
+                    variation=variation,
+                    dataset=dataset,
+                    fit=False,
+                    one_dim=True
                 )
 
         if "electron" in weights_config:
