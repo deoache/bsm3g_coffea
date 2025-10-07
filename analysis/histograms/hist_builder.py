@@ -11,10 +11,19 @@ class HistBuilder:
             "Regular": hist.axis.Regular,
             "Variable": hist.axis.Variable,
             "Integer": hist.axis.Integer,
+            "Boolean": hist.axis.Boolean,
         }
-        self.cat_axis = hist.axis.StrCategory(
-            name="category", categories=self.histogram_config.categories
-        )
+        self.int_cat = False
+        if all(isinstance(cat, int) for cat in self.histogram_config.categories):
+            self.int_cat = True
+            self.int_cat_axis = hist.axis.IntCategory(
+                name="category",
+                categories=[int(cat) for cat in self.histogram_config.categories],
+            )
+        else:
+            self.cat_axis = hist.axis.StrCategory(
+                name="category", categories=self.histogram_config.categories
+            )
 
     def build_histogram(self):
         if self.histogram_config.stack:
@@ -30,7 +39,10 @@ class HistBuilder:
         for axis in self.histogram_config.axes:
             axes = [self.build_axis(axis)]
             if len(self.histogram_config.categories) > 1:
-                axes.append(self.cat_axis)
+                if self.int_cat:
+                    axes.append(self.int_cat_axis)
+                else:
+                    axes.append(self.cat_axis)
             if self.histogram_config.add_syst_axis:
                 axes.append(self.get_syst_axis())
             if self.histogram_config.add_weight:
@@ -43,7 +55,10 @@ class HistBuilder:
         for axis in axes_names:
             axes.append(self.build_axis(axis))
         if len(self.histogram_config.categories) > 1:
-            axes.append(self.cat_axis)
+            if self.int_cat:
+                axes.append(self.int_cat_axis)
+            else:
+                axes.append(self.cat_axis)
         if self.histogram_config.add_syst_axis:
             axes.append(self.get_syst_axis())
         if self.histogram_config.add_weight:
