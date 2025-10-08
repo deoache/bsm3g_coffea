@@ -34,7 +34,15 @@ def add_isr_weight(events, weights, year, variation, dataset, fit, one_dim):
         else:
             sf = cset["isr_weight"].evaluate(selected_dimuon_pt, selected_njet)
         weight = ak.where(in_binning, sf, ak.ones_like(sf))
+
+        sf_name = "isr_weight"
+        if one_dim:
+            sf_name += "_1D"
+        else:
+            sf_name += "_2D"
+        if fit:
+            sf_name += "_fit"
         weights.add(
-            name="isr_weight",
+            name=sf_name,
             weight=weight,
         )
