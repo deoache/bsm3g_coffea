@@ -12,12 +12,16 @@ from pathlib import Path
 from collections import defaultdict
 from coffea.util import save, load
 from coffea.processor import accumulate
-from analysis.filesets.utils import get_workflow_key_process_map, get_process_sample_map
 from analysis.workflows.config import WorkflowConfigBuilder
 from analysis.postprocess.plotter import CoffeaPlotter
 from analysis.postprocess.postprocessor import (
     save_histograms_by_sample,
     save_histograms_by_process,
+)
+from analysis.filesets.utils import (
+    get_workflow_key_process_map,
+    get_datasets_to_run_over,
+    get_process_sample_map,
 )
 from analysis.postprocess.utils import (
     print_header,
@@ -32,6 +36,9 @@ from analysis.postprocess.utils import (
     load_processed_histograms,
     get_results_report,
     merge_parquets_by_sample,
+    get_sample_name,
+    load_year_histograms,
+    plot_variable_check,
 )
 
 
@@ -166,42 +173,6 @@ def check_output_dir(workflow: str, year: str) -> Path:
     raise FileNotFoundError(f"Could not find outputs at {output_dir}")
 
 
-def get_sample_name(filename: str, year: str) -> str:
-    """return sample name from filename"""
-    sample_name = Path(filename).stem
-    if sample_name.rsplit("_")[-1].isdigit():
-        sample_name = "_".join(sample_name.rsplit("_")[:-1])
-    return sample_name.replace(f"{year}_", "")
-
-
-def load_year_histograms(workflow: str, year: str):
-    """load and merge histograms from pre/post campaigns"""
-    aux_map = {
-        "2016": ["2016preVFP", "2016postVFP"],
-        "2022": ["2022preEE", "2022postEE"],
-        "2023": ["2023preBPix", "2023postBPix"],
-    }
-    pre_year, post_year = aux_map[year]
-    base_path = OUTPUT_DIR / workflow
-    pre_file = base_path / pre_year / f"{pre_year}_processed_histograms.coffea"
-    post_file = base_path / post_year / f"{post_year}_processed_histograms.coffea"
-    return accumulate([load(pre_file), load(post_file)])
-
-
-def load_histogram_file(path: Path):
-    return load(path) if path.exists() else None
-
-
-def plot_variable(variable: str, group_by, histogram_config) -> bool:
-    """decide whether to plot a given variable under group_by mode"""
-    if isinstance(group_by, str) and group_by == "process":
-        return True
-    for hist_key, variables in histogram_config.layout.items():
-        if variable in variables and group_by["name"] in variables:
-            return group_by["name"] != variable
-    return False
-
-
 if __name__ == "__main__":
     args = parse_arguments()
 
@@ -233,18 +204,20 @@ if __name__ == "__main__":
             for f in glob.glob(f"{output_dir}/*/*.coffea", recursive=True)
             if not Path(f).stem.startswith("cutflow")
             and not Path(f).stem.startswith("processed")
+            and not any([c in f for c in categories])
         ]
-
         grouped_outputs = defaultdict(list)
         for output_file in output_files:
-            sample_name = get_sample_name(output_file, args.year)
+            sample_name = get_sample_name(output_file, args.year, args.workflow)
             grouped_outputs[sample_name].append(output_file)
-
-        process_samples_map = get_process_sample_map(grouped_outputs.keys(), args.year)
 
         if args.output_format == "parquet":
             if not args.skipmerging:
-                merge_parquets_by_sample(output_dir, args.year, categories)
+                for category in categories:
+                    merge_parquets_by_sample(
+                        output_dir, args.year, args.workflow, category
+                    )
+                    gc.collect()
 
         for sample in grouped_outputs:
             if sample in ["TWminusto4Q", "TbarWplusto4Q"]:
@@ -254,16 +227,17 @@ if __name__ == "__main__":
                 sample,
                 args.year,
                 output_dir,
-                categories,
                 workflow_config,
+                categories,
                 args.nocutflow,
                 args.output_format,
-                args.skipmerging,
                 args.include_weights,
                 args.exclude_weights,
             )
             gc.collect()
 
+        datasets_to_run_over = get_datasets_to_run_over(args.workflow, args.year)
+        process_samples_map = get_process_sample_map(datasets_to_run_over, args.year)
         for process in process_samples_map:
             save_histograms_by_process(
                 process,
@@ -290,9 +264,13 @@ if __name__ == "__main__":
                 cutflow_df = pd.DataFrame()
                 for process in process_samples_map:
                     cutflow_file = category_dir / f"cutflow_{category}_{process}.csv"
-                    cutflow_df = pd.concat(
-                        [cutflow_df, pd.read_csv(cutflow_file, index_col=[0])], axis=1
-                    )
+                    if cutflow_file.exists():
+                        cutflow_df = pd.concat(
+                            [cutflow_df, pd.read_csv(cutflow_file, index_col=[0])],
+                            axis=1,
+                        )
+                    else:
+                        continue
 
                 columns_to_drop = []
                 key_process_map = get_workflow_key_process_map(
@@ -478,7 +456,9 @@ if __name__ == "__main__":
 
         if not args.postprocess and args.year not in ["2016", "2022", "2023"]:
             postprocess_file = output_dir / f"{args.year}_processed_histograms.coffea"
-            processed_histograms = load_histogram_file(postprocess_file)
+            processed_histograms = (
+                load(postprocess_file) if postprocess_file.exists() else None
+            )
             if processed_histograms is None:
                 cmd = f"python3 run_postprocess.py -w {args.workflow} -y {args.year} --postprocess"
                 raise ValueError(
@@ -497,7 +477,9 @@ if __name__ == "__main__":
         for category in workflow_config.event_selection["categories"]:
             logging.info(f"Plotting histograms for category: {category}")
             for variable in workflow_config.histogram_config.variables:
-                if plot_variable(variable, group_by, workflow_config.histogram_config):
+                if plot_variable_check(
+                    variable, group_by, workflow_config.histogram_config
+                ):
                     logging.info(variable)
                     plotter.plot_histograms(
                         variable=variable,

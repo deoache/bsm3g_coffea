@@ -261,12 +261,6 @@ class CoffeaPlotter:
 
         xlabel = self.histogram_config.axes[variable].label
 
-        if self.workflow in ["zplusl_os", "zplusl_ss"]:
-            if category == "electron":
-                xlabel = xlabel.replace(r"\ell", r"e")
-            elif category == "muon":
-                xlabel = xlabel.replace(r"\ell", r"\mu")
-
         if add_ratio:
             ax.set(xlabel=None, ylabel=ylabel)
             rax.set(
@@ -402,8 +396,13 @@ class CoffeaPlotter:
         text_map = {
             "ztoee": r"$ Z \rightarrow ee$ events",
             "ztomumu": r"$ Z \rightarrow \mu\mu$ events",
-            "ztojets": f"{category} selection",
         }
+        if self.workflow == "ztojets":
+            text_map["ztojets"] = "central"
+            if category == "vbf":
+                text_map["ztojets"] += " + vbf"
+            text_map["ztojets"] += " selection"
+
         at = AnchoredText(
             text_map.get(self.workflow, f"{self.workflow} events") + "\n",
             loc="upper left",

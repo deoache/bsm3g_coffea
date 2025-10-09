@@ -1,3 +1,4 @@
+import re
 import os
 import glob
 import hist
@@ -11,7 +12,11 @@ from pathlib import Path
 from collections import defaultdict
 from coffea.util import load, save
 from coffea.processor import accumulate
-from analysis.filesets.utils import get_dataset_config
+from analysis.filesets.utils import (
+    get_dataset_config,
+    get_datasets_to_run_over,
+    get_process_sample_map,
+)
 
 
 def setup_logger(output_dir):
@@ -324,17 +329,6 @@ def build_systematic_summary(processed_histograms, workflow="1b1mu"):
     return summary_table
 
 
-def merge_parquets(inpath, outpath, sample_name):
-    parquets = dd.read_parquet(
-        f"{inpath}/*.parquet", engine="pyarrow", calculate_divisions=False
-    )
-    df = parquets.compute()
-    outpath = Path(outpath)
-    if not outpath.exists():
-        outpath.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(f"{outpath}/{sample_name}.parquet", engine="pyarrow", index=False)
-
-
 def accumulate_metadata(grouped_outputs, sample):
     grouped_metadata = {}
     for fname in grouped_outputs[sample]:
@@ -370,40 +364,66 @@ def get_lumi_weight(year, sample, metadata):
     logging.info(f"luminosity [1/pb]: {luminosities[year]}")
     logging.info(f"xsec [pb]: {xsec}")
     logging.info(f"sumw: {sumw}")
-    logging.info(f"weight: {weight}")
 
     return weight
 
 
 def save_cutflows(metadata, categories, sample, weight, output_dir):
     for category in categories:
-        logging.info(f"saving {sample} cutflow for category {category}")
+        if category in metadata:
+            logging.info(f"saving {sample} cutflow for category {category}")
 
-        category_dir = Path(output_dir) / category
-        if not category_dir.exists():
-            category_dir.mkdir(parents=True, exist_ok=True)
+            category_dir = Path(output_dir) / category
+            if not category_dir.exists():
+                category_dir.mkdir(parents=True, exist_ok=True)
 
-        scaled_cutflow = {
-            cut: nevents * weight
-            for cut, nevents in metadata[category]["cutflow"].items()
-        }
-        processed_cutflow = {sample: scaled_cutflow}
-        cutflow_file = category_dir / f"cutflow_{category}_{sample}.coffea"
-        save(processed_cutflow, cutflow_file)
+            scaled_cutflow = {
+                cut: nevents * weight
+                for cut, nevents in metadata[category]["cutflow"].items()
+            }
+            processed_cutflow = {sample: scaled_cutflow}
+            cutflow_file = category_dir / f"cutflow_{category}_{sample}.coffea"
+            save(processed_cutflow, cutflow_file)
 
 
-def get_process_dict(output_dir, year, categories):
-    folders = glob.glob(str(output_dir / "*"))
+def get_sample_name(filename: str, year: str, workflow: str) -> str:
+    """
+    Return the canonical sample name from the given filename.
+    - Removes trailing numeric suffixes (_1, _2, etc.)
+    - Removes year prefix if present
+    - Matches against the known list in process_samples_map
+    """
+    datasets_to_run_over = get_datasets_to_run_over(workflow, year)
+    process_samples_map = get_process_sample_map(datasets_to_run_over, year)
+
+    # Clean base name
+    sample_name = Path(filename).stem
+    sample_name = re.sub(r"_\d+$", "", sample_name)  # remove trailing "_number"
+    sample_name = sample_name.replace(f"{year}_", "")  # remove "2017_" etc.
+
+    # Match with known sample names
+    for samples in process_samples_map.values():
+        for valid_sample in samples:
+            if sample_name == valid_sample or sample_name.startswith(valid_sample):
+                return valid_sample  # return canonical name
+
+    # Fallback: return cleaned name even if not found in map
+    return sample_name
+
+
+def get_process_dict(output_dir, year, workflow, category):
+    datasets_to_run_over = get_datasets_to_run_over(workflow, year)
+
+    folders = [str(p) for p in Path(output_dir).glob("*") if p.is_dir()]
     process_dict = defaultdict(list)
-
     dataset_config = get_dataset_config(year)
 
     for folder in folders:
         folder_path = Path(folder)
         name = folder_path.name
-        for category in categories:
-            if name == category:
-                continue
+        if (name in datasets_to_run_over) or (
+            "_".join(name.split("_")[:-1]) in datasets_to_run_over
+        ):
             if category not in process_dict:
                 process_dict[category] = {}
 
@@ -432,21 +452,36 @@ def get_process_dict(output_dir, year, categories):
     return dict(process_dict)
 
 
-def merge_parquets_by_sample(output_dir, year, categories):
+def merge_parquets(inpath, outpath, sample_name):
+    parquets = dd.read_parquet(
+        f"{inpath}/*.parquet", engine="pyarrow", calculate_divisions=False
+    )
+    df = parquets.compute()
+    outpath = Path(outpath)
+    if not outpath.exists():
+        outpath.mkdir(parents=True, exist_ok=True)
+    if len(df) > 0:
+        df.to_parquet(f"{outpath}/{sample_name}.parquet", engine="pyarrow", index=False)
+    else:
+        logging.info(f"Empty parquet file!")
+
+
+def merge_parquets_by_sample(output_dir, year, workflow, category):
     """Merge parquet files from subfolders into a single output path per sample and category."""
-    print_header("Merging parquet outputs by sample")
-    process_dict = get_process_dict(output_dir, year, categories)
-    for category in categories:
-        for name, subfolders in process_dict[category].items():
-            outpath = f"{output_dir}/parquets_{name}/{category}"
-            if len(subfolders) != 0:
-                logging.info(
-                    f"Merging {name} outputs into {len(subfolders)} "
-                    f"{'partition' if len(subfolders) == 1 else 'partitions'}"
-                )
-                for i, subfolder in enumerate(subfolders, start=1):
-                    inpath = f"{subfolder}/{category}"
-                    merge_parquets(inpath, outpath, f"{name}_{i}")
+    print_header(f"Merging parquet outputs by sample for category {category}")
+    process_dict = get_process_dict(output_dir, year, workflow, category)
+
+    for name, subfolders in process_dict[category].items():
+        outpath = f"{output_dir}/parquets_{name}/{category}"
+        if len(subfolders) != 0:
+            logging.info(
+                f"Merging {name} outputs into {len(subfolders)} "
+                f"{'partition' if len(subfolders) == 1 else 'partitions'}"
+            )
+            for i, subfolder in enumerate(subfolders, start=1):
+                logging.info(f"procesing partition {i}/{len(subfolders)}")
+                inpath = f"{subfolder}/{category}"
+                merge_parquets(inpath, outpath, f"{name}_{i}")
 
 
 def accumulate_and_save_cutflows(process, process_samples_map, output_dir, categories):
@@ -585,3 +620,27 @@ def get_results_report(
             df.loc["Data", ["events"]] / df.loc["Total background", ["events"]]
         )
     return df
+
+
+def load_year_histograms(workflow: str, year: str):
+    """load and merge histograms from pre/post campaigns"""
+    aux_map = {
+        "2016": ["2016preVFP", "2016postVFP"],
+        "2022": ["2022preEE", "2022postEE"],
+        "2023": ["2023preBPix", "2023postBPix"],
+    }
+    pre_year, post_year = aux_map[year]
+    base_path = OUTPUT_DIR / workflow
+    pre_file = base_path / pre_year / f"{pre_year}_processed_histograms.coffea"
+    post_file = base_path / post_year / f"{post_year}_processed_histograms.coffea"
+    return accumulate([load(pre_file), load(post_file)])
+
+
+def plot_variable_check(variable: str, group_by, histogram_config) -> bool:
+    """decide whether to plot a given variable under group_by mode"""
+    if isinstance(group_by, str) and group_by == "process":
+        return True
+    for hist_key, variables in histogram_config.layout.items():
+        if variable in variables and group_by["name"] in variables:
+            return group_by["name"] != variable
+    return False
