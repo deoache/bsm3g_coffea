@@ -49,7 +49,7 @@ def parse_args():
         "--output_format",
         type=str,
         default="coffea",
-        choices=["coffea", "root"],
+        choices=["coffea", "parquet"],
         help="Format of output histograms",
     )
     parser.add_argument(
@@ -270,7 +270,7 @@ if __name__ == "__main__":
         subprocess.run(
             f"rm -rf analysis/filesets/fileset_{args.year}_NANO_lxplus.json", shell=True
         )
-        reset_cmd = f"python3 runner.py -w {args.workflow} -y {args.year}"
+        reset_cmd = f"python3 runner.py -w {args.workflow} -y {args.year} --output_format {args.output_format}"
         if args.eos:
             reset_cmd += " --eos"
         subprocess.run(reset_cmd, shell=True)
