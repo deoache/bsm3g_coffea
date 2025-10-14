@@ -133,7 +133,7 @@ class ElectronCorrector:
             ]
             cset_args_down = [
                 self.year_map[self.year],
-                "sfup",
+                "sfdown",
                 self.id_map[id_working_point],
                 electron_eta,
                 electron_pt,
