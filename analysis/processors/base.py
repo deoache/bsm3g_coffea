@@ -58,6 +58,7 @@ class BaseProcessor(processor.ProcessorABC):
                 selections.append(cut_name)
                 current_selection = selection_manager.all(*selections)
                 if ak.sum(current_selection) != 0:
+                    """
                     pruned_ev_cutflow = events[current_selection]
                     for obj in objects:
                         pruned_ev_cutflow[f"selected_{obj}"] = objects[obj][
@@ -76,6 +77,14 @@ class BaseProcessor(processor.ProcessorABC):
                     output["metadata"][category]["cutflow"][cut_name] = ak.sum(
                         weights_container_cutflow.weight()
                     )
+                    """
+                    sumw_cutflow = (
+                        ak.sum(events.genWeight[current_selection])
+                        if hasattr(events, "genWeight")
+                        else len(events[current_selection])
+                    )
+                    output["metadata"][category]["cutflow"][cut_name] = sumw_cutflow
+                    
                 else:
                     output["metadata"][category]["cutflow"][cut_name] = 0
 
@@ -88,10 +97,14 @@ class BaseProcessor(processor.ProcessorABC):
             workflow_config=self.workflow_config,
             dataset=events.metadata["dataset"],
         )
+        # apply jet veto maps
+        if "jets_veto" in self.workflow_config.corrections_config["objects"]:
+            events = apply_jetvetomaps(events, self.year)
+            
         # check if sample is MC
         self.is_mc = hasattr(events, "genWeight")
         if not self.is_mc:
-            # add genPartFlav fields to leptons (QCD Estimation)
+            # add genPartFlav fields to leptons
             events["Muon", "genPartFlav"] = ak.zeros_like(events.Muon.pt)
             events["Electron", "genPartFlav"] = ak.zeros_like(events.Electron.pt)
 
@@ -141,10 +154,6 @@ class BaseProcessor(processor.ProcessorABC):
         # ----------------------------------------------------------------------------------
         # object selection
         # ----------------------------------------------------------------------------------
-        if "jets_veto" in self.workflow_config.corrections_config["objects"]:
-            # apply jet veto maps and update missing energy
-            apply_jetvetomaps(events, year)
-
         object_selector = ObjectSelector(
             self.workflow_config.object_selection, year, self.run
         )
