@@ -237,7 +237,7 @@ class MuonCorrector:
         in_muons = self.flat_muons.mask[in_muon_mask]
 
         # get muons pT and abseta (replace None values with some 'in-limit' value)
-        muon_pt = ak.fill_none(in_muons.pt, 29.0)
+        muon_pt = ak.fill_none(in_muons.pt, 29.0 if self.run_key == "Run2" else 15.0)
         muon_eta = np.abs(ak.fill_none(in_muons.eta, 0.0))
 
         # get nominal scale factors
@@ -295,7 +295,7 @@ class MuonCorrector:
         in_muons = self.flat_muons.mask[in_muon_mask]
 
         # get muons transverse momentum and abs pseudorapidity (replace None values with some 'in-limit' value)
-        muon_pt = ak.fill_none(in_muons.pt, 29.0)
+        muon_pt = ak.fill_none(in_muons.pt, 29.0 if self.run_key == "Run2" else 26.0)
         muon_eta = np.abs(ak.fill_none(in_muons.eta, 0.0))
 
         # scale factors keys
