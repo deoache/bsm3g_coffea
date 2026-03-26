@@ -43,9 +43,9 @@ def select_dileptons_qcd(objects, key):
         with_name="PtEtaPhiMCandidate",
         behavior=candidate.behavior,
     )
+    leptons = leptons[ak.argsort(leptons.pt, ascending=False, axis=1)]
     # create pair combinations with all muons
     dileptons = ak.combinations(leptons, 2, fields=["l1", "l2"])
-    dileptons = dileptons[ak.argsort(dileptons.l1.pt, axis=1)]
     # add dimuon 4-momentum field
     dileptons["p4"] = dileptons.l1 + dileptons.l2
     dileptons["pt"] = dileptons.p4.pt
