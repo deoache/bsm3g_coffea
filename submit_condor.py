@@ -31,10 +31,10 @@ def submit_condor(args):
     print(f"Creating {args.workflow}-{args.year}-{args.dataset} condor file")
     
 
-    if args.label:
-        jobname = f"{args.workflow}_{args.label}_{args.dataset}"
-    else:
-        jobname = f"{args.workflow}_{args.dataset}"
+    #if args.label:
+    #    jobname = f"{args.workflow}_{args.label}_{args.dataset}"
+    #else:
+    jobname = f"{args.workflow}_{args.dataset}"
 
     # make condor and log directories
     condor_dir = Path.cwd() / "condor"
