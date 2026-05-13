@@ -97,4 +97,6 @@ if __name__ == "__main__":
             cmd_args.append("--submit")
         if args.eos:
             cmd_args.append("--eos")
+        if args.label:
+            cmd_args.append(f"-l {args.label}")
         subprocess.run(cmd + cmd_args)
