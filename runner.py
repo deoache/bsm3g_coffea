@@ -98,5 +98,7 @@ if __name__ == "__main__":
         if args.eos:
             cmd_args.append("--eos")
         if args.label:
-            cmd_args.append(f"-l {args.label}")
+            cmd_args.append("--label")
+            cmd_args.append(args.label)
+
         subprocess.run(cmd + cmd_args)
