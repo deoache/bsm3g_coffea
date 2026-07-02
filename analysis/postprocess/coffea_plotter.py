@@ -158,7 +158,7 @@ class CoffeaPlotter:
                         )
                         if f"{variation}Up" in histogram_info[key]["variations"]:
                             histogram_info[key]["variations"][f"{variation}Up"] += up
-                            histogram_info[key]["variations"][f"{variation}Down"] += up
+                            histogram_info[key]["variations"][f"{variation}Down"] += down
                         else:
                             histogram_info[key]["variations"][f"{variation}Up"] = up
                             histogram_info[key]["variations"][f"{variation}Down"] = down
