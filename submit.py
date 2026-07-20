@@ -23,7 +23,12 @@ def main(args):
     out = processor.run_uproot_job(
         partition_fileset,
         treename="Events",
-        processor_instance=BaseProcessor(workflow=args.workflow, year=args.year),
+        processor_instance=BaseProcessor(
+            workflow=args.workflow, 
+            year=args.year,
+            output_format=args.output_format,
+            output_location=output_location,
+        ),
         executor=processor.futures_executor,
         executor_args={"schema": NanoAODSchema, "workers": 4},
     )
