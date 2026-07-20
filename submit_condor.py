@@ -29,7 +29,7 @@ def move_proxy() -> str:
 def submit_condor(args):
     """Build condor files. Optionally submit condor job"""
     print(f"Creating {args.workflow}-{args.year}-{args.dataset} condor file")
-    
+
     jobname = f"{args.workflow}_{args.dataset}"
 
     # make condor and log directories
@@ -38,7 +38,7 @@ def submit_condor(args):
     if args.label:
         job_dir = job_dir / args.label
     job_dir = job_dir / args.year / args.dataset
-    
+
     if not job_dir.exists():
         job_dir.mkdir(parents=True, exist_ok=True)
 
@@ -46,7 +46,7 @@ def submit_condor(args):
     if args.label:
         log_dir = log_dir / args.label
     log_dir = log_dir / args.year / args.dataset
-    
+
     if not log_dir.exists():
         log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -159,7 +159,7 @@ if __name__ == "__main__":
         "--output_format",
         type=str,
         default="coffea",
-        choices=["coffea", "root"],
+        choices=["coffea", "parquet"],
         help="format of output histogram",
     )
     parser.add_argument(

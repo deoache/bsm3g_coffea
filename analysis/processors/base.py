@@ -6,6 +6,7 @@ from coffea.analysis_tools import PackedSelection, Weights
 from analysis.workflows.config import WorkflowConfigBuilder
 from analysis.histograms import HistBuilder, fill_histograms
 from analysis.corrections.jetvetomaps import apply_jetvetomaps
+from analysis.utils import dump_parquet
 from analysis.corrections import (
     object_corrector_manager,
     weight_manager,
@@ -33,10 +34,15 @@ class BaseProcessor(processor.ProcessorABC):
     def __init__(
         self,
         workflow: str,
-        year: str = "2017",
+        year: str,
+        output_format: str,
+        output_location: str,
     ):
         self.year = year
         self.workflow = workflow
+        self.output_format = output_format
+        self.output_location = output_location
+
         self.year_key = year[:4]
         self.run = "2" if year.startswith("201") else "3"
 
@@ -84,7 +90,7 @@ class BaseProcessor(processor.ProcessorABC):
                         else len(events[current_selection])
                     )
                     output["metadata"][category]["cutflow"][cut_name] = sumw_cutflow
-                    
+
                 else:
                     output["metadata"][category]["cutflow"][cut_name] = 0
 
@@ -100,7 +106,7 @@ class BaseProcessor(processor.ProcessorABC):
         # apply jet veto maps
         if "jets_veto" in self.workflow_config.corrections_config["objects"]:
             events = apply_jetvetomaps(events, self.year)
-            
+
         # check if sample is MC
         self.is_mc = hasattr(events, "genWeight")
         if not self.is_mc:
@@ -112,21 +118,111 @@ class BaseProcessor(processor.ProcessorABC):
             return self.process_shift(events, shift_name="nominal")
 
         # define object-level shifts
-        shifts = [({"Jet": events.Jet, "MET": events.MET, "Muon": events.Muon, "Tau": events.Tau}, "nominal")]
+        shifts = [
+            (
+                {
+                    "Jet": events.Jet,
+                    "MET": events.MET,
+                    "Muon": events.Muon,
+                    "Tau": events.Tau,
+                },
+                "nominal",
+            )
+        ]
         if self.workflow_config.corrections_config["apply_obj_syst"]:
             if self.run == "2":
                 shifts.extend(
                     [
-                        ({"Jet": events.Jet, "MET": events.MET.rochester.up, "Muon": events.Muon.rochester.up, "Tau": events.Tau}, f"CMS_rochester_{self.year_key}Up"),
-                        ({"Jet": events.Jet, "MET": events.MET.rochester.down, "Muon": events.Muon.rochester.down, "Tau": events.Tau}, f"CMS_rochester_{self.year_key}Down"),
-                        ({"Jet": events.Jet.JES_jes.up, "MET": events.MET.JES_jes.up, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_scale_j_{self.year_key}Up"),
-                        ({"Jet": events.Jet.JES_jes.down, "MET": events.MET.JES_jes.down, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_scale_j_{self.year_key}Down"),
-                        ({"Jet": events.Jet.JER.up, "MET": events.MET.JER.up, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_res_j_{self.year_key}Up"),
-                        ({"Jet": events.Jet.JER.down, "MET": events.MET.JER.down, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_res_j_{self.year_key}Down"),
-                        ({"Jet": events.Jet, "MET": events.MET.MET_UnclusteredEnergy.up, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_met_unclustered_{self.year_key}Up"),
-                        ({"Jet": events.Jet, "MET": events.MET.MET_UnclusteredEnergy.down, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_met_unclustered_{self.year_key}Down"),
-                        ({"Jet": events.Jet, "MET": events.MET.tau_energy.up, "Muon": events.Muon, "Tau": events.Tau.tau_energy.up}, f"CMS_t_energy_{self.year_key}Up"),
-                        ({"Jet": events.Jet, "MET": events.MET.tau_energy.down, "Muon": events.Muon, "Tau": events.Tau.tau_energy.down}, f"CMS_t_energy_{self.year_key}Down"),
+                        (
+                            {
+                                "Jet": events.Jet,
+                                "MET": events.MET.rochester.up,
+                                "Muon": events.Muon.rochester.up,
+                                "Tau": events.Tau,
+                            },
+                            f"CMS_rochester_{self.year_key}Up",
+                        ),
+                        (
+                            {
+                                "Jet": events.Jet,
+                                "MET": events.MET.rochester.down,
+                                "Muon": events.Muon.rochester.down,
+                                "Tau": events.Tau,
+                            },
+                            f"CMS_rochester_{self.year_key}Down",
+                        ),
+                        (
+                            {
+                                "Jet": events.Jet.JES_jes.up,
+                                "MET": events.MET.JES_jes.up,
+                                "Muon": events.Muon,
+                                "Tau": events.Tau,
+                            },
+                            f"CMS_scale_j_{self.year_key}Up",
+                        ),
+                        (
+                            {
+                                "Jet": events.Jet.JES_jes.down,
+                                "MET": events.MET.JES_jes.down,
+                                "Muon": events.Muon,
+                                "Tau": events.Tau,
+                            },
+                            f"CMS_scale_j_{self.year_key}Down",
+                        ),
+                        (
+                            {
+                                "Jet": events.Jet.JER.up,
+                                "MET": events.MET.JER.up,
+                                "Muon": events.Muon,
+                                "Tau": events.Tau,
+                            },
+                            f"CMS_res_j_{self.year_key}Up",
+                        ),
+                        (
+                            {
+                                "Jet": events.Jet.JER.down,
+                                "MET": events.MET.JER.down,
+                                "Muon": events.Muon,
+                                "Tau": events.Tau,
+                            },
+                            f"CMS_res_j_{self.year_key}Down",
+                        ),
+                        (
+                            {
+                                "Jet": events.Jet,
+                                "MET": events.MET.MET_UnclusteredEnergy.up,
+                                "Muon": events.Muon,
+                                "Tau": events.Tau,
+                            },
+                            f"CMS_met_unclustered_{self.year_key}Up",
+                        ),
+                        (
+                            {
+                                "Jet": events.Jet,
+                                "MET": events.MET.MET_UnclusteredEnergy.down,
+                                "Muon": events.Muon,
+                                "Tau": events.Tau,
+                            },
+                            f"CMS_met_unclustered_{self.year_key}Down",
+                        ),
+                        (
+                            {
+                                "Jet": events.Jet,
+                                "MET": events.MET.tau_energy.up,
+                                "Muon": events.Muon,
+                                "Tau": events.Tau.tau_energy.up,
+                            },
+                            f"CMS_t_energy_{self.year_key}Up",
+                        ),
+                        (
+                            {
+                                "Jet": events.Jet,
+                                "MET": events.MET.tau_energy.down,
+                                "Muon": events.Muon,
+                                "Tau": events.Tau.tau_energy.down,
+                            },
+                            f"CMS_t_energy_{self.year_key}Down",
+                        ),
                     ]
                 )
         return processor.accumulate(
@@ -211,18 +307,32 @@ class BaseProcessor(processor.ProcessorABC):
                 variables_map = {}
                 for variable, axis in self.histogram_config.axes.items():
                     variables_map[variable] = eval(axis.expression)[category_mask]
-                fill_histograms(
-                    histogram_config=self.histogram_config,
-                    weights_container=weights_container,
-                    variables_map=variables_map,
-                    histograms=histograms,
-                    shift_name=shift_name,
-                    category=category,
-                    is_mc=is_mc,
-                    flow=self.histogram_config.flow,
-                )
+
+                if self.output_format == "coffea":
+                    fill_histograms(
+                        histogram_config=self.histogram_config,
+                        weights_container=weights_container,
+                        variables_map=variables_map,
+                        histograms=histograms,
+                        shift_name=shift_name,
+                        category=category,
+                        is_mc=is_mc,
+                        flow=self.histogram_config.flow,
+                    )
+                elif self.output_format == "parquet":
+                    dump_parquet(
+                        events=events,
+                        weights_container=weights_container,
+                        variables_map=variables_map,
+                        workflow=self.workflow,
+                        year=year,
+                        category=category,
+                        output_location=self.output_location,
+                        shift_name=shift_name,
+                    )
         # define output dictionary accumulator
-        output["histograms"] = histograms
+        if self.output_format == "coffea":
+            output["histograms"] = histograms
         return output
 
     def postprocess(self, accumulator):

@@ -4,7 +4,6 @@ import subprocess
 from pathlib import Path
 from analysis.filesets.utils import get_datasets_to_run_over, fileset_checker
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -55,7 +54,7 @@ if __name__ == "__main__":
         "--output_format",
         type=str,
         default="coffea",
-        choices=["coffea"],
+        choices=["coffea", "parquet"],
         help="format of output histogram",
     )
     parser.add_argument(
@@ -91,7 +90,7 @@ if __name__ == "__main__":
             "--output_format",
             args.output_format,
             "--memory",
-            args.memory
+            args.memory,
         ]
         if args.submit:
             cmd_args.append("--submit")

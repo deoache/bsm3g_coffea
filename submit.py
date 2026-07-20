@@ -9,6 +9,15 @@ from analysis.processors.base import BaseProcessor
 
 
 def main(args):
+
+    # set output location (used when --output_format parquet)
+    if args.eos:
+        output_location = f"root://eosuser.cern.ch//eos/user/{args.user[0]}/{args.user}/bsm3g_coffea/outputs/"
+    else:
+        output_location = (
+            f"/afs/cern.ch/user/{args.user[0]}/{args.user}/public/bsm3g_coffea/outputs/"
+        )
+
     with open(args.partition_json) as f:
         partition_fileset = json.load(f)
     out = processor.run_uproot_job(
@@ -19,7 +28,7 @@ def main(args):
         executor_args={"schema": NanoAODSchema, "workers": 4},
     )
     savepath = f"{args.output_path}/{args.dataset}"
-    if args.output_format == "coffea":
+    if args.output_format in ["coffea", "parquet"]:
         save(out, f"{savepath}.coffea")
     elif args.output_format == "root":
         write_root(out, savepath, args)
@@ -77,8 +86,18 @@ if __name__ == "__main__":
         "--output_format",
         type=str,
         default="coffea",
-        choices=["coffea", "root"],
+        choices=["coffea", "parquet"],
         help="format of output histogram",
+    )
+    parser.add_argument(
+        "--eos",
+        action="store_true",
+        help="Enable saving outputs to /eos",
+    )
+    parser.add_argument(
+        "--user",
+        type=str,
+        help="User name",
     )
     args = parser.parse_args()
     main(args)
