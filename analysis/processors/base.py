@@ -7,6 +7,7 @@ from analysis.workflows.config import WorkflowConfigBuilder
 from analysis.histograms import HistBuilder, fill_histograms
 from analysis.corrections.jetvetomaps import apply_jetvetomaps
 from analysis.utils import dump_parquet
+from analysis.utils.parquet_writer import dump_chunk_sumw
 from analysis.corrections import (
     object_corrector_manager,
     weight_manager,
@@ -113,6 +114,9 @@ class BaseProcessor(processor.ProcessorABC):
             # add genPartFlav fields to leptons
             events["Muon", "genPartFlav"] = ak.zeros_like(events.Muon.pt)
             events["Electron", "genPartFlav"] = ak.zeros_like(events.Electron.pt)
+
+        if self.output_format == "parquet" and self.is_mc:
+            dump_chunk_sumw(events, self.workflow, self.year, self.output_location)
 
         if not self.is_mc:
             return self.process_shift(events, shift_name="nominal")

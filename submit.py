@@ -10,14 +10,6 @@ from analysis.processors.base import BaseProcessor
 
 def main(args):
 
-    # set output location (used when --output_format parquet)
-    if args.eos:
-        output_location = f"root://eosuser.cern.ch//eos/user/{args.user[0]}/{args.user}/bsm3g_coffea/outputs/"
-    else:
-        output_location = (
-            f"/afs/cern.ch/user/{args.user[0]}/{args.user}/public/bsm3g_coffea/outputs/"
-        )
-
     with open(args.partition_json) as f:
         partition_fileset = json.load(f)
     out = processor.run_uproot_job(
@@ -27,7 +19,7 @@ def main(args):
             workflow=args.workflow, 
             year=args.year,
             output_format=args.output_format,
-            output_location=output_location,
+            output_location=args.output_path,
         ),
         executor=processor.futures_executor,
         executor_args={"schema": NanoAODSchema, "workers": 4},
