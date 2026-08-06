@@ -309,7 +309,14 @@ class BaseProcessor(processor.ProcessorABC):
                     )
                 # get analysis variables and fill histograms
                 variables_map = {}
+                layout = self.histogram_config.layout
                 for variable, axis in self.histogram_config.axes.items():
+                    if layout != "individual":
+                        layout_variable = [
+                            ax for axes in layout.values() for ax in axes
+                        ]
+                        if variable not in layout_variable:
+                            continue
                     variables_map[variable] = eval(axis.expression)[category_mask]
 
                 if self.output_format == "coffea":
