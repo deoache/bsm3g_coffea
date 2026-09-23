@@ -116,7 +116,7 @@ corrections:
     topBoostWeight: true
     pujetid: 
       - id: tight
-    btagging: 
+    btagging:
       - id: medium
       - bc: true
       - light: true
@@ -296,7 +296,7 @@ histogram_config:
         - 500
         - 800
       label: $m_T^{tot}(\mu, p_T^{\text{miss}}, \text{Leading b-jet})$ [GeV]
-      expression: np.sqrt((objects['muons'].pt + ak.pad_none(objects['bjets'], target=2)[:, 0].pt + objects['met'].pt) ** 2 - (objects['muons'] + ak.pad_none(objects['bjets'], target=2)[:, 0] + objects['met']).pt ** 2)
+      expression: np.sqrt((objects['muons'].pt + ak.pad_none(objects['bjets'].pt, target=2)[:, 0] + objects['met'].pt)**2 - ((objects['muons'].px + ak.pad_none(objects['bjets'].px, target=2)[:, 0] + objects['met'].px)**2 + (objects['muons'].py + ak.pad_none(objects['bjets'].py, target=2)[:, 0] + objects['met'].py)**2))
     st:
       type: Regular
       bins: 50

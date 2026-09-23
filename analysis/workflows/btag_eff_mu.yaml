@@ -85,13 +85,13 @@ corrections:
     - muons
     - taus
     - met
-  apply_obj_syst: false
+  apply_obj_syst: true
   event_weights:
     genWeight: true
     pileupWeight: true
     l1prefiringWeight: true
-    lhepdfWeight: false
-    lhescaleWeight: false
+    lhepdfWeight: true
+    lhescaleWeight: true
     partonshowerWeight: true
     topPtWeight: true
     topBoostWeight: false

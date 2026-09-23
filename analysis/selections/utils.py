@@ -27,7 +27,6 @@ def select_dileptons(objects, key):
     dileptons["pt"] = dileptons.p4.pt
     return dileptons
 
-
 def select_dileptons_qcd(objects, key):
     leptons = ak.zip(
         {
@@ -38,15 +37,21 @@ def select_dileptons_qcd(objects, key):
             "charge": objects[key].charge,
             "is_loose": objects[key].is_loose,
             "is_tight": objects[key].is_tight,
-            "is_loose_not_tight": objects[key].is_loose_not_tight
+            "is_not_tight": objects[key].is_not_tight,
+            "is_loose_not_tight": objects[key].is_loose_not_tight,
+            "is_matched": objects[key].is_matched,
+            "is_barrel": objects[key].is_barrel
         },
         with_name="PtEtaPhiMCandidate",
         behavior=candidate.behavior,
     )
+    # sort leptons by transverse momentum
     leptons = leptons[ak.argsort(leptons.pt, ascending=False, axis=1)]
     # create pair combinations with all muons
     dileptons = ak.combinations(leptons, 2, fields=["l1", "l2"])
+
     # add dimuon 4-momentum field
     dileptons["p4"] = dileptons.l1 + dileptons.l2
     dileptons["pt"] = dileptons.p4.pt
+
     return dileptons

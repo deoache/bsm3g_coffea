@@ -9,14 +9,15 @@ object_selection:
   electrons:
     field: events.Electron
     cuts:
-      - events.Electron.pt > 55
+      - events.Electron.pt > 30
       - (np.abs(events.Electron.eta) < 2.4) & ((np.abs(events.Electron.eta) < 1.44) | (np.abs(events.Electron.eta) > 1.57))
-      - working_points.electrons_id(events, 'wpLiso')
+      - working_points.electrons_id(events, 'loose')
+      - working_points.electrons_iso(events, 'loose')
       - ~working_points.electrons_id(events, 'wp80iso')
   muons:
     field: events.Muon
     cuts:
-      - events.Muon.pt > 35
+      - events.Muon.pt > 30
       - np.abs(events.Muon.eta) < 2.4
       - working_points.muons_id(events, 'tight')
       - working_points.muons_iso(events, 'tight')

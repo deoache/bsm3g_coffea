@@ -5,15 +5,15 @@ datasets:
     - tt
     - wjets_ht
     - diboson
-  signal:
-    - Wpb_eNu_M300
-    - Wpb_eNu_M400
-    - Wpb_eNu_M600
-    - Wpb_eNu_M750
-    - Wpb_eNu_M1000
-    - Wpb_eNu_M1500
-    - Wpb_eNu_M2000
-    - Wpb_eNu_M3000
+#  signal:
+#    - Wpb_eNu_M300
+#    - Wpb_eNu_M400
+#    - Wpb_eNu_M600
+#    - Wpb_eNu_M750
+#    - Wpb_eNu_M1000
+#    - Wpb_eNu_M1500
+#    - Wpb_eNu_M2000
+#    - Wpb_eNu_M3000
 object_selection:
   electrons:
     field: events.Electron
@@ -120,7 +120,7 @@ corrections:
     lhescaleWeight: true
     partonshowerWeight: true
     topPtWeight: true
-    topBoostWeight: false
+    topBoostWeight: true
     pujetid: 
       - id: tight
     btagging: 

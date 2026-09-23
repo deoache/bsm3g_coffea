@@ -26,3 +26,8 @@
     - IsoMu24
   SingleEle:
     - Ele30_WPTight_Gsf
+2024:
+  SingleMu:
+    - IsoMu24
+  SingleEle:
+    - Ele30_WPTight_Gsf

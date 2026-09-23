@@ -9,7 +9,7 @@ def top_pt_sf(pt):
 
 def add_top_pt_weight(events, weights_container, dataset, variation):
     # https://twiki.cern.ch/twiki/bin/viewauth/CMS/TopPtReweighting#How_to_practically_apply_default
-    if dataset.startswith("TTTo"):
+    if dataset.startswith("TT"):
         top = events.GenPart[
             (events.GenPart.pdgId == 6) & events.GenPart.hasFlags(["isLastCopy"])
         ]

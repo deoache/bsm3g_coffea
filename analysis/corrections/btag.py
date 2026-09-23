@@ -279,6 +279,9 @@ class BTagCorrector:
         tagged_sf = ak.prod(sf.mask[passbtag], axis=-1)
 
         # untagged SF = (1 - SF * eff) / (1 - eff)
-        untagged_sf = ak.prod(((1 - sf * eff) / (1 - eff)).mask[~passbtag], axis=-1)
+        # untagged_sf = ak.prod(((1 - sf * eff) / (1 - eff)).mask[~passbtag], axis=-1)
+        ratio = (1 - sf * eff) / (1 - eff)
+        ratio_untagged = ak.where(~passbtag, ratio, 1.0)
+        untagged_sf = ak.prod(ratio_untagged, axis=-1)
 
         return ak.fill_none(tagged_sf * untagged_sf, 1.0)

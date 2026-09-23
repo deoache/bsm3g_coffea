@@ -103,7 +103,7 @@ def apply_jerc_corrections(
     apply_junc,
 ):
     era = get_dataset_era(dataset, year)
-    run_key = "Run3" if year.startswith("2022") or year.startswith("2023") else "Run2"
+    run_key = "Run3" if year.startswith("202") else "Run2"
 
     # add requiered variables to Jet collection
     jets = events.Jet
@@ -218,8 +218,8 @@ def apply_jerc_corrections(
         jec_factory = CorrectedJetsFactory(jec_name_map[run_key], jec_stack_data)
 
     # update Jet collection
-    events["Jet"] = jec_factory.build(events.Jet, events.caches[0])
+    events["Jet"] = jec_factory.build(events.Jet)
 
     if run_key == "Run2":
         met_factory = CorrectedMETFactory(jec_name_map[run_key])
-        events["MET"] = met_factory.build(events.MET, events.Jet, {})
+        events["MET"] = met_factory.build(events.MET, events.Jet)

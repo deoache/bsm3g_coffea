@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def add_top_boost_weight(events, weights_container, year, workflow, dataset, variation):
-    if dataset.startswith("TTTo"):
+    if dataset.startswith("TT"):
         # get input variables
         met_pt = events.selected_met.pt
         leading_bjet_pt = ak.pad_none(events.selected_bjets, target=2)[:, 0].pt

@@ -1,16 +1,31 @@
 """Check job outputs, identify missing results, and optionally resubmit jobs or update input filesets based on xrootd site issues"""
 
+import sys
+import select
 import yaml
 import json
 import argparse
 import logging
 import subprocess
 from pathlib import Path
-from analysis.filesets.xrootd_sites import xroot_to_site
 from datetime import datetime, timedelta
 from analysis.utils import make_output_directory
 from analysis.filesets.xrootd_sites import xroot_to_site
 from analysis.filesets.utils import divide_list, modify_site_list, extract_xrootd_errors
+
+
+def timed_input(prompt, timeout=3, default="y"):
+    """Request user input with a timeout. Falls back to default if timed out or empty."""
+    print(f"{prompt} [{default.upper()}/n] (auto-selected in {timeout}s): ", end="", flush=True)
+    
+    # Check for available input on stdin within the timeout limit
+    ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    if ready:
+        response = sys.stdin.readline().strip()
+        return response.lower() if response else default.lower()
+    else:
+        print(f"\n[Timeout reached] Using default option: '{default.upper()}'")
+        return default.lower()
 
 
 def parse_args():
@@ -39,6 +54,7 @@ def parse_args():
             "2022postEE",
             "2023preBPix",
             "2023postBPix",
+            "2024",
         ],
         help="dataset year",
     )
@@ -53,6 +69,12 @@ def parse_args():
         help="Format of output histograms",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="change the number of workers to process the analysis",
+    )
+    parser.add_argument(
         "--hours_ago",
         type=int,
         default=3,
@@ -65,13 +87,18 @@ def parse_args():
         default="",
         help="label for the output directory",
     )
-    parser.add_argument("--reset", action="store_true", help="descp")
+    parser.add_argument("--reset", action="store_true", help="Reset previous outputs and run runner.py")
     parser.add_argument(
         "-m",
         "--memory",
         type=str,
-        default="2000",
+        default="4000",
         help="Requested memory (in MB) for the condor job",
+    )
+    parser.add_argument(
+        "--global",
+        action="store_true",
+        help="send xrd-cms-global partition filesets",
     )
     return parser.parse_args()
 
@@ -190,7 +217,7 @@ def analyze_xrootd_errors(error_file):
 
 
 def update_input_filesets(
-    site_errs, year, fileset_dir, job_dir, datasets_with_missing_jobs
+    site_errs, year, fileset_dir, job_dir, datasets_with_missing_jobs, use_global
 ):
     """
     Blacklist failing xrootd sites and update filesets for affected datasets.
@@ -222,27 +249,34 @@ def update_input_filesets(
             logging.warning(f"Dataset {dataset} not found in fileset JSON")
             continue
 
-        root_files = all_filesets[dataset]
+        root_files = all_filesets[dataset]['files']
         args_json = job_dir / dataset / "arguments.json"
         if not args_json.exists():
             logging.error(f"Missing arguments.json for dataset {dataset}")
             continue
 
         nfiles = json.loads(args_json.read_text())["nfiles"]
-        root_files_list = divide_list(root_files, nfiles)
+        root_files_list = divide_list(list(root_files), nfiles)
 
         partition_dataset = {
-            i
-            + 1: {(f"{dataset}_{i+1}" if len(root_files_list) > 1 else dataset): chunk}
+            str(i + 1): {
+                (f"{dataset}_{i+1}" if len(root_files_list) > 1 else dataset): {
+                    "files": {root_file: "Events" for root_file in chunk},
+                    "metadata": all_filesets[dataset]['metadata']
+                }
+            }
             for i, chunk in enumerate(root_files_list)
         }
 
         partition_file = job_dir / dataset / "partitions.json"
         with open(partition_file, "w") as json_file:
             json.dump(partition_dataset, json_file, indent=4)
+        
+        if use_global:
+            subprocess.run(f"sed -i -E 's#root://.*/store/#root://cms-xrd-global.cern.ch//store/#g' {partition_file}",shell=True)
 
 
-def resubmit_jobs(job_dir, jobnum_missing, datasets_with_missing_jobs, workflow, year):
+def resubmit_jobs(job_dir, jobnum_missing, datasets_with_missing_jobs, workflow, year, use_global):
     """
     Prepare and resubmit jobs for datasets with missing jobs.
 
@@ -256,6 +290,9 @@ def resubmit_jobs(job_dir, jobnum_missing, datasets_with_missing_jobs, workflow,
     """
     to_resubmit = []
     for dataset in datasets_with_missing_jobs:
+        partition_file = job_dir / dataset / "partitions.json" 
+        if use_global:
+            subprocess.run(f"sed -i -E 's#root://.*/store/#root://cms-xrd-global.cern.ch//store/#g' {partition_file}",shell=True)
         missing_file = job_dir / dataset / "missing.txt"
         with open(missing_file, "w") as f:
             print(*sorted(jobnum_missing[dataset]), sep="\n", file=f)
@@ -289,7 +326,7 @@ if __name__ == "__main__":
         subprocess.run(
             f"rm -rf analysis/filesets/fileset_{args.year}_NANO_lxplus.json", shell=True
         )
-        reset_cmd = f"python3 runner.py -w {args.workflow} -y {args.year} -m {args.memory}"
+        reset_cmd = f"python3 runner.py -w {args.workflow} -y {args.year} -m {args.memory} --workers {args.workers}"
         if args.label:
             reset_cmd += f" -l {args.label}"
         if args.eos:
@@ -312,21 +349,22 @@ if __name__ == "__main__":
     jobnum_missing, datasets_with_missing_jobs = print_job_status(jobnum, jobnum_done)
 
     if jobnum_missing and datasets_with_missing_jobs:
-        site_errs = analyze_xrootd_errors(error_file)
+        #site_errs = analyze_xrootd_errors(error_file)
 
-        if site_errs and input("Update input filesets? (y/n): ").lower() in [
-            "y",
-            "yes",
-        ]:
-            update_input_filesets(
-                site_errs, args.year, fileset_dir, job_dir, datasets_with_missing_jobs
-            )
+        #if site_errs and timed_input("Update input filesets?", timeout=3, default="y") in [
+        #    "y",
+        #    "yes",
+        #]:
+        #    update_input_filesets(
+        #        site_errs, args.year, fileset_dir, job_dir, datasets_with_missing_jobs, getattr(args,"global") 
+        #    )
 
-        if input("Update and resubmit jobs? (y/n): ").lower() in ["y", "yes"]:
+        if timed_input("Update and resubmit jobs?", timeout=0, default="y") in ["y", "yes"]:
             resubmit_jobs(
                 job_dir,
                 jobnum_missing,
                 datasets_with_missing_jobs,
                 args.workflow,
                 args.year,
+                getattr(args,"global")
             )

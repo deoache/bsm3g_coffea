@@ -187,7 +187,7 @@ class CoffeaPlotter:
                 is_onesided = up_is_up ^ down_is_down
                 # Sum in quadrature of the systematic uncertainties taking into account if the uncertainty is one- or double-sided
                 err2_up_twosided = np.where(up_is_up, err_up**2, err_down**2)
-                err2_down_twosided = np.where(up_is_up, err_down**2, err_up**2)
+                err2_down_twosided = np.where(down_is_down, err_down**2, err_up**2)
                 err2_max = np.maximum(err2_up_twosided, err2_down_twosided)
                 err2_up_onesided = np.where(is_onesided & up_is_up, err2_max, 0)
                 err2_down_onesided = np.where(is_onesided & down_is_down, err2_max, 0)
@@ -262,7 +262,7 @@ class CoffeaPlotter:
     ):
         setup_logger(self.output_dir)
         # set plot params
-        hep.style.use(hep.style.CMS)
+        hep.style.use("CMS")
         plt.rcParams.update(self.style["rcParams"])
         # get nominal MC histograms
         histogram_info = self.collect_histograms_for_plotting(variable, category, blind)
@@ -411,14 +411,27 @@ class CoffeaPlotter:
         energy = {"run2": "13 TeV", "run3": "13.6 TeV"}
         run_key = (
             "run3"
-            if (self.year.startswith("2022") or self.year.startswith("2023"))
+            if (self.year.startswith("202"))
             else "run2"
         )
-        hep.cms.lumitext(
-            f"{self.luminosities[self.year] * 1e-3:.1f} fb$^{{-1}}$ ({self.year}, {energy[run_key]})",
+                
+        hep.cms.label(
             ax=ax,
+            lumi=round(self.luminosities[self.year] * 1e-3, 1),
+            com=energy[run_key].split()[0],
+            data=True,
+            year=self.year
         )
-        hep.cms.text("Preliminary", ax=ax)
+
+        ax.text(
+            0.1, 1.00,
+            r"$\mathit{Preliminary}$", 
+            verticalalignment="bottom", 
+            horizontalalignment="left", 
+            transform=ax.transAxes, 
+            fontsize=18
+        )
+
         # save histograms
         output_path = Path(f"{self.output_dir}/{category}")
         if not output_path.exists():

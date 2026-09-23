@@ -8,6 +8,10 @@ X509PATH=$3
 export XRD_NETWORKSTACK=IPv4
 export XRD_RUNFORKHANDLER=1
 export X509_USER_PROXY=$X509PATH
+export XRD_REQUESTTIMEOUT=300
+export XRD_STREAMTIMEOUT=300
+export XRD_CONNECTIONTIMEOUT=60
+export XRD_CONNECTIONRETRY=5
 
 # Print proxy certificate details to verify validity and VOMS attributes
 voms-proxy-info -all -file $X509PATH

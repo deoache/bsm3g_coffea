@@ -5,15 +5,15 @@ datasets:
     - tt
     - wjets_ht
     - diboson
-  signal:
-    - Wpb_MuNu_M300
-    - Wpb_MuNu_M400
-    - Wpb_MuNu_M600
-    - Wpb_MuNu_M750
-    - Wpb_MuNu_M1000
-    - Wpb_MuNu_M1500
-    - Wpb_MuNu_M2000
-    - Wpb_MuNu_M3000
+#  signal:
+#    - Wpb_MuNu_M300
+#    - Wpb_MuNu_M400
+#    - Wpb_MuNu_M600
+#    - Wpb_MuNu_M750
+#    - Wpb_MuNu_M1000
+#    - Wpb_MuNu_M1500
+#    - Wpb_MuNu_M2000
+#    - Wpb_MuNu_M3000
 object_selection:
   muons:
     field: events.Muon
@@ -120,7 +120,7 @@ corrections:
     lhescaleWeight: true
     partonshowerWeight: true
     topPtWeight: true
-    topBoostWeight: false
+    topBoostWeight: true
     pujetid: 
       - id: tight
     btagging: 

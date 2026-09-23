@@ -34,6 +34,84 @@ EGammaD:
   process: Data
   key: electron
   xsec: null
+WJetsToLNu_inclusive:
+  era: MC
+  query: WtoLNu-2Jets_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_inclusive
+  xsec: 67710.0
+WJetsToLNu_0to120_HT40to100:
+  era: MC
+  query: WtoLNu-4Jets_MLNu-0to120_HT-40to100_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v3/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_ht
+  xsec: 4254.0
+WJetsToLNu_0to120_HT100to400:
+  era: MC
+  query: WtoLNu-4Jets_MLNu-0to120_HT-100to400_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v3/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_ht
+  xsec: 1626.0
+WJetsToLNu_0to120_HT400to800:
+  era: MC
+  query: WtoLNu-4Jets_MLNu-0to120_HT-400to800_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v1/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_ht
+  xsec: 59.99
+WJetsToLNu_0to120_HT800to1500:
+  era: MC
+  query: WtoLNu-4Jets_MLNu-0to120_HT-800to1500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_ht
+  xsec: 6.23
+WJetsToLNu_0to120_HT1500to2500:
+  era: MC
+  query: WtoLNu-4Jets_MLNu-0to120_HT-1500to2500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_ht
+  xsec: 0.4477
+WJetsToLNu_0to120_HT2500:
+  era: MC
+  query: WtoLNu-4Jets_MLNu-0to120_HT-2500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_ht
+  xsec: 0.03075
+WJetsToLNu_120_HT40to100:
+  era: MC
+  query: WtoLNu-4Jets_MLNu-120_HT-40to100_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_ht
+  xsec: 20.56
+WJetsToLNu_120_HT100to400:
+  era: MC
+  query: WtoLNu-4Jets_MLNu-120_HT-100to400_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_ht
+  xsec: 10.19
+WJetsToLNu_120_HT400to800:
+  era: MC
+  query: WtoLNu-4Jets_MLNu-120_HT-400to800_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_ht
+  xsec: 0.5239
+WJetsToLNu_120_HT800to1500:
+  era: MC
+  query: WtoLNu-4Jets_MLNu-120_HT-800to1500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_ht
+  xsec: 0.06255
+WJetsToLNu_120_HT1500to2500:
+  era: MC
+  process: WJetsToLNu
+  key: wjets_ht
+  query: WtoLNu-4Jets_MLNu-120_HT-1500to2500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM
+  xsec: 0.005066
+WJetsToLNu_120_HT2500:
+  era: MC
+  query: WtoLNu-4Jets_MLNu-120_HT-2500_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM
+  process: WJetsToLNu
+  key: wjets_ht
+  xsec: 0.0003788
 DYJetsToLL_inclusive_50:
   era: MC
   query: DYto2L-2Jets_MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/Run3Summer22NanoAODv12-130X_mcRun3_2022_realistic_v5-v2/NANOAODSIM

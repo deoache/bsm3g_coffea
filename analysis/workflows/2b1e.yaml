@@ -295,7 +295,7 @@ histogram_config:
         - 500
         - 800
       label: $m_T^{tot}(e, p_T^{\text{miss}}, \text{Leading b-jet})$ [GeV]
-      expression: np.sqrt((objects['electrons'].pt + ak.pad_none(objects['bjets'], target=2)[:, 0].pt + objects['met'].pt) ** 2 - (objects['electrons'] + ak.pad_none(objects['bjets'], target=2)[:, 0] + objects['met']).pt ** 2)
+      expression: np.sqrt((objects['electrons'].pt + ak.pad_none(objects['bjets'].pt, target=2)[:, 0] + objects['met'].pt)**2 - ((objects['electrons'].px + ak.pad_none(objects['bjets'].px, target=2)[:, 0] + objects['met'].px)**2 + (objects['electrons'].py + ak.pad_none(objects['bjets'].py, target=2)[:, 0] + objects['met'].py)**2))
     st:
       type: Regular
       bins: 50

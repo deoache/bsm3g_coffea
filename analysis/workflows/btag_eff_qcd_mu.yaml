@@ -11,9 +11,10 @@ object_selection:
     cuts:
       - events.Muon.pt > 30
       - np.abs(events.Muon.eta) < 2.4
-      - working_points.muons_iso(events, 'loose')
       - working_points.muons_id(events, 'loose')
+      - working_points.muons_iso(events, 'loose')
       - ~working_points.muons_id(events, 'tight')
+      - ~working_points.muons_iso(events, 'tight')
   electrons:
     field: events.Electron
     cuts:

@@ -26,6 +26,7 @@ def get_lumi_mask(events, year):
         "2018": "analysis/data/Cert_314472-325175_13TeV_Legacy2018_Collisions18_JSON.txt",
         "2022": "analysis/data/Cert_Collisions2022_355100_362760_Golden.txt",
         "2023": "analysis/data/Cert_Collisions2023_366442_370790_Golden.txt",
+        "2024": "analysis/data/Cert_Collisions2024_378981_386951_Golden.txt"
     }
     for key in year_map:
         if year.startswith(key):

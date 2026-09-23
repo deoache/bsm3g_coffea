@@ -86,7 +86,7 @@ corrections:
     - electrons
     - taus
     - met
-  apply_obj_syst: false
+  apply_obj_syst: true
   event_weights:
     genWeight: true
     pileupWeight: true

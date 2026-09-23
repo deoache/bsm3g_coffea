@@ -177,8 +177,12 @@ def get_k(eta, var, cset, nested=False):
     # return 0 if smearing in MC already larger than in data
     k_f = np.zeros_like(k_data_f)
     condition = k_mc_f < k_data_f
-    k_f[condition] = (k_data_f[condition] ** 2 - k_mc_f[condition] ** 2) ** 0.5
-
+    #k_f[condition] = (k_data_f[condition] ** 2 - k_mc_f[condition] ** 2) ** 0.5
+    k_f = ak.where(
+        condition,
+        (k_data_f ** 2 - k_mc_f ** 2) ** 0.5,
+        k_f
+    )
     if nested:
         result = ak.unflatten(k_f, nmuons)
     else:

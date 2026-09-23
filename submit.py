@@ -11,12 +11,23 @@ from analysis.processors.base import BaseProcessor
 def main(args):
     with open(args.partition_json) as f:
         partition_fileset = json.load(f)
-    out = processor.run_uproot_job(
+    # Configure the Runner using coffea 2024+ API
+    futures_run = processor.Runner(
+        executor=processor.FuturesExecutor(workers=args.workers, compression=None, retries=6),
+        schema=NanoAODSchema,
+        chunksize=100000,
+        savemetrics=False,
+        xrootdtimeout=120,
+        align_clusters=True,
+        skipbadfiles=True
+    )
+    # Execute processing job using the Runner instance
+    out = futures_run(
         partition_fileset,
         treename="Events",
-        processor_instance=BaseProcessor(workflow=args.workflow, year=args.year),
-        executor=processor.futures_executor,
-        executor_args={"schema": NanoAODSchema, "workers": 4},
+        processor_instance=BaseProcessor(
+            workflow=args.workflow, year=args.year, mode="virtual"
+        ),
     )
     savepath = f"{args.output_path}/{args.dataset}"
     if args.output_format == "coffea":
@@ -51,6 +62,7 @@ if __name__ == "__main__":
             "2022postEE",
             "2023preBPix",
             "2023postBPix",
+            "2024",
         ],
         help="dataset year",
     )
@@ -79,6 +91,17 @@ if __name__ == "__main__":
         default="coffea",
         choices=["coffea", "root"],
         help="format of output histogram",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="change the number of workers to process the analysis",
+    )
+    parser.add_argument(
+        "--global",
+        action="store_true",
+        help="send xrd-cms-global partition filesets",
     )
     args = parser.parse_args()
     main(args)

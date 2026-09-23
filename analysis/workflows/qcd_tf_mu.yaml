@@ -3,24 +3,13 @@ datasets:
     - muon
   mc:
     - dy_inclusive
+    - wjets_ht
     - singletop
     - tt
     - diboson
-    - wjets_ht
 object_selection:
   muons:
-    field: events.Muon
-    add_cut:
-      is_loose:
-        - working_points.muons_id(events, 'loose')
-        - working_points.muons_iso(events, 'loose') 
-      is_tight:
-        - working_points.muons_id(events, 'tight')
-        - working_points.muons_iso(events, 'tight')
-      is_loose_not_tight:
-        - working_points.muons_iso(events, 'loose')
-        - working_points.muons_id(events, 'loose')
-        - ~working_points.muons_id(events, 'tight')
+    field: select_qcd_tf_muons
     cuts:
       - events.Muon.pt > 30
       - np.abs(events.Muon.eta) < 2.4
@@ -29,7 +18,7 @@ object_selection:
     cuts:
       - events.Electron.pt > 30
       - (np.abs(events.Electron.eta) < 2.4) & ((np.abs(events.Electron.eta) < 1.44) | (np.abs(events.Electron.eta) > 1.57))
-      - working_points.electrons_id(events, 'wp90iso')
+      - working_points.electrons_id(events, 'wp80iso')
       - delta_r_mask(events.Electron, objects['muons'], 0.4)
   taus:
     field: events.Tau
@@ -53,14 +42,14 @@ object_selection:
       - delta_r_mask(events.Jet, objects['electrons'], 0.4)
       - delta_r_mask(events.Jet, objects['muons'], 0.4)
       - delta_r_mask(events.Jet, objects['taus'], 0.4)
-  bjets:
+  lightjets:
     field: events.Jet
     cuts:
       - events.Jet.pt > 20
       - np.abs(events.Jet.eta) < 2.4
       - working_points.jets_id(events, year, 'tightlepveto')
       - working_points.jets_pileup_id(events, 'tight', year)
-      - working_points.jets_btagging(events, 'medium', year)
+      - ~working_points.jets_btagging(events, 'loose', year)
       - delta_r_mask(events.Jet, objects['electrons'], 0.4)
       - delta_r_mask(events.Jet, objects['muons'], 0.4)
       - delta_r_mask(events.Jet, objects['taus'], 0.4)
@@ -69,11 +58,12 @@ object_selection:
   dimuons:
     field: select_dimuons_qcd
     cuts:
+      - objects['dimuons'].l1.is_tight & objects['dimuons'].l1.is_matched
       - (objects['dimuons'].p4.mass < 60.0) | (objects['dimuons'].p4.mass > 120.0)
       - np.sqrt(2 * objects['dimuons'].l1.pt * objects['met'].pt * (ak.ones_like(objects['met'].pt) - np.cos(objects['dimuons'].l1.delta_phi(objects['met'])))) > 60
 event_selection:
   hlt_paths:
-    muon:
+    electron:
       - SingleMu
   selections:
     goodvertex: events.PV.npvsGood > 0
@@ -83,14 +73,13 @@ event_selection:
     metfilters: get_metfilters_mask(events, year)
     met_50: objects['met'].pt > 50
     hemcleaning: get_hemcleaning_mask(events, year)
-    one_bjet: ak.num(objects['bjets']) == 1
     two_muon: ak.num(objects['muons']) == 2
     one_dimuon: ak.num(objects['dimuons']) == 1
     electron_veto: ak.num(objects['electrons']) == 0
     tau_veto: ak.num(objects['taus']) == 0
-    two_tight: (ak.sum(objects['dimuons'].l1.is_tight, axis=1) == 1) & (ak.sum(objects['dimuons'].l2.is_tight, axis=1) == 1)
-    one_tight_one_loose_not_tight: ( (ak.sum(objects['dimuons'].l1.is_tight, axis=1) == 1) & (ak.sum(objects['dimuons'].l2.is_loose_not_tight, axis=1) == 1) ) | ( (ak.sum(objects['dimuons'].l1.is_loose_not_tight, axis=1) == 1) & (ak.sum(objects['dimuons'].l2.is_tight, axis=1) == 1) )
-    one_loose_one_tight: ( (ak.sum(objects['dimuons'].l1.is_loose, axis=1) == 1) & (ak.sum(objects['dimuons'].l2.is_tight, axis=1) == 1) ) | ( (ak.sum(objects['dimuons'].l1.is_tight, axis=1) == 1) & (ak.sum(objects['dimuons'].l2.is_loose, axis=1) == 1) )
+    subleading_tight_dimuon: ak.sum(objects['dimuons'].l2.is_tight, axis=1) == 1
+    subleading_loose_dimuon: ak.sum(objects['dimuons'].l2.is_loose, axis=1) == 1
+    subleading_loose_not_tight_dimuon: ak.sum(objects['dimuons'].l2.is_loose_not_tight, axis=1) == 1
   categories:
     2T:
       - goodvertex
@@ -102,11 +91,10 @@ event_selection:
       - hemcleaning
       - two_muon
       - one_dimuon
-      - one_bjet
       - electron_veto
       - tau_veto
-      - two_tight
-    1L1T:
+      - subleading_tight_dimuon
+    1T1L:
       - goodvertex
       - lumi
       - trigger
@@ -116,11 +104,10 @@ event_selection:
       - hemcleaning
       - two_muon
       - one_dimuon
-      - one_bjet
       - electron_veto
       - tau_veto
-      - one_loose_one_tight
-    1T1LnT:
+      - subleading_loose_dimuon
+    1T1L:
       - goodvertex
       - lumi
       - trigger
@@ -130,18 +117,17 @@ event_selection:
       - hemcleaning
       - two_muon
       - one_dimuon
-      - one_bjet
       - electron_veto
       - tau_veto
-      - one_tight_one_loose_not_tight
+      - subleading_loose_not_tight_dimuon
 corrections:
   objects:
     - jets
-    - jets_veto
     - muons
+    - jets_veto
     - taus
     - met
-  apply_obj_syst: false
+  apply_obj_syst: true
   event_weights:
     genWeight: true
     pileupWeight: true
@@ -149,17 +135,13 @@ corrections:
     lhepdfWeight: false
     lhescaleWeight: false
     partonshowerWeight: true
-    MuBoostWeight: false
+    topPtWeight: true
+    topBoostWeight: false
     pujetid: 
       - id: tight
-    btagging: 
-      - id: medium
-      - bc: true
-      - light: true
-      - full_run: false
     muon:
-      - id: false
-      - iso: false
+      - id: tight
+      - iso: tight
       - reco: true
       - trigger: false
     electron: false
@@ -247,7 +229,7 @@ histogram_config:
         - 500
       label: $p_T^{miss}$ [GeV]
       expression: objects['met'].pt
-    muon_met_mass:
+    muon_met_mass_leading:
       type: Variable
       edges:
         - 40
@@ -260,18 +242,56 @@ histogram_config:
         - 300
         - 500
         - 800
-      label: $m_T(\mu, p_T^{\text{miss}})$ [GeV]
+      label: $m_T(\mu_1, p_T^{\text{miss}})$ [GeV]
       expression: np.sqrt(2 * objects['dimuons'].l1.pt * objects['met'].pt * (ak.ones_like(objects['met'].pt) - np.cos(objects['dimuons'].l1.delta_phi(objects['met']))))
+    muon_met_mass_subleading:
+      type: Variable
+      edges:
+        - 40
+        - 75
+        - 100
+        - 125
+        - 150
+        - 175
+        - 200
+        - 300
+        - 500
+        - 800
+      label: $m_T(\mu_2, p_T^{\text{miss}})$ [GeV]
+      expression: np.sqrt(2 * objects['dimuons'].l2.pt * objects['met'].pt * (ak.ones_like(objects['met'].pt) - np.cos(objects['dimuons'].l2.delta_phi(objects['met']))))
+    leading_muon_is_tight:
+      type: Boolean
+      label: Leading Muon ID
+      expression: objects['dimuons'].l1.is_tight
+    subleading_muon_is_tight:
+      type: Boolean
+      label: Subleading Muon ID
+      expression: objects['dimuons'].l2.is_tight
+    leading_muon_is_barrel:
+      type: Boolean
+      label: Leading Muon is barrel
+      expression: objects['dimuons'].l1.is_barrel
+    subleading_muon_is_barrel:
+      type: Boolean
+      label: Subeading Muon is barrel
+      expression: objects['dimuons'].l2.is_barrel
   layout:
     multiplicity:
       - jet_multiplicity
-    transverse_mass:
-      - muon_met_mass
-    met:
-      - met_pt
     leading_muon:
       - leading_muon_pt
       - leading_muon_eta
+      - leading_muon_phi
+      - leading_muon_is_tight
+      - leading_muon_is_barrel
     subleading_muon:
       - subleading_muon_pt
       - subleading_muon_eta
+      - subleading_muon_phi
+      - subleading_muon_is_tight
+      - subleading_muon_is_barrel
+    transverse_mass:
+      - muon_met_mass_leading
+      - muon_met_mass_subleading
+    met:
+      - met_pt

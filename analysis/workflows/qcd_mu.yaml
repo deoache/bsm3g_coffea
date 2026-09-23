@@ -13,15 +13,16 @@ object_selection:
     cuts:
       - events.Muon.pt > 30
       - np.abs(events.Muon.eta) < 2.4
-      - working_points.muons_iso(events, 'loose')
       - working_points.muons_id(events, 'loose')
+      - working_points.muons_iso(events, 'loose')
       - ~working_points.muons_id(events, 'tight')
+      - ~working_points.muons_iso(events, 'tight')
   electrons:
     field: events.Electron
     cuts:
       - events.Electron.pt > 30
       - (np.abs(events.Electron.eta) < 2.4) & ((np.abs(events.Electron.eta) < 1.44) | (np.abs(events.Electron.eta) > 1.57))
-      - working_points.electrons_id(events, 'wp90iso')
+      - working_points.electrons_id(events, 'wp80iso')
       - delta_r_mask(events.Electron, objects['muons'], 0.4)
   taus:
     field: events.Tau
@@ -115,7 +116,7 @@ corrections:
       - id: false
       - iso: false
       - reco: true
-      - trigger: false
+      - trigger: true
     electron: false
     tau: false
 histogram_config:

@@ -56,8 +56,8 @@ def get_dataset_config(year):
     }
     aux_year = aux_year_map.get(year, year)
     fileset_path = Path(f"{Path.cwd()}/analysis/filesets")
-    run_key = "Run3" if year.startswith("2022") or year.startswith("2023") else "Run2"
-    nano_version = "nanov9" if run_key == "Run2" else "nanov12"
+    run_key = "Run3" if year.startswith("202") else "Run2"
+    nano_version = "nanov15" if year == "2024" else ("nanov9" if run_key == "Run2" else "nanov12")
     with open(f"{fileset_path}/{aux_year}_{nano_version}.yaml", "r") as f:
         dataset_config = yaml.safe_load(f)
     return dataset_config

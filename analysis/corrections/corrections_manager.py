@@ -118,7 +118,7 @@ def weight_manager(
 
         if "topPtWeight" in weights_config:
             if weights_config["topPtWeight"]:
-                if dataset.startswith("TTTo"):
+                if dataset.startswith("TT"):
                     add_top_pt_weight(
                         events=pruned_ev,
                         weights_container=weights_container,

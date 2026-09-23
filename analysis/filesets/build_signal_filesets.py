@@ -35,6 +35,7 @@ if __name__ == "__main__":
             "2022postEE",
             "2023preBPix",
             "2023postBPix",
+            "2024",
         ],
     )
     parser.add_argument(
@@ -50,10 +51,10 @@ if __name__ == "__main__":
     filesets_dir = Path.cwd() / "analysis" / "filesets"
     run_key = (
         "Run3"
-        if args.year.startswith("2022") or args.year.startswith("2023")
+        if args.year.startswith("202")
         else "Run2"
     )
-    nano_version = "nanov9" if run_key == "Run2" else "nanov12"
+    nano_version = "nanov15" if args.year == "2024" else ("nanov9" if run_key == "Run2" else "nanov12")
     datasets_dir = filesets_dir / f"{args.year}_{nano_version}.yaml"
     with open(datasets_dir, "r") as f:
         dataset_configs = yaml.safe_load(f)

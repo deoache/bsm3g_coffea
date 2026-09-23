@@ -22,6 +22,7 @@ if __name__ == "__main__":
             "2022postEE",
             "2023preBPix",
             "2023postBPix",
+            "2024",
         ],
     )
     parser.add_argument(
@@ -36,10 +37,10 @@ if __name__ == "__main__":
     filesets_dir = Path.cwd() / "analysis" / "filesets"
     run_key = (
         "Run3"
-        if args.year.startswith("2022") or args.year.startswith("2023")
+        if args.year.startswith("202")
         else "Run2"
     )
-    nano_version = "nanov9" if run_key == "Run2" else "nanov12"
+    nano_version = "nanov15" if args.year == "2024" else ("nanov9" if run_key == "Run2" else "nanov12")
     datasets_dir = filesets_dir / f"{args.year}_{nano_version}.yaml"
     with open(datasets_dir, "r") as f:
         dataset_configs = yaml.safe_load(f)
@@ -73,19 +74,25 @@ if __name__ == "__main__":
     )
     ddc.do_save(f"dataset_discovery_{args.year}.json")
 
-    # load and reformat generated fileset
     with open(f"dataset_discovery_{args.year}.json", "r") as f:
         dataset_discovery = json.load(f)
-    new_dataset = {key: [] for key in das_queries}
-    for dataset in dataset_discovery:
-        root_files = list(dataset_discovery[dataset]["files"].keys())
-        dataset_key = dataset_discovery[dataset]["metadata"]["short_name"]
-        if dataset_key.startswith("Single"):
-            new_dataset[dataset_key.split("_")[0]] += root_files
-        else:
-            new_dataset[dataset_key] = root_files
-    # save new fileset and drop 'dataset_discovery' fileset
+    
+    new_dataset = {}
+
+    for i, (dataset_name, dataset_info) in enumerate(dataset_discovery.items(), start=1):
+        short_name = dataset_info["metadata"]["short_name"]
+    
+        key_name = f"{short_name}"
+    
+        new_dataset[key_name] = {
+            "files": dataset_info[
+                "files"
+            ],
+            "metadata": {"short_name": short_name},
+        }
+    
     os.remove(f"dataset_discovery_{args.year}.json")
     fileset_file = filesets_dir / f"fileset_{args.year}_NANO_lxplus.json"
+    
     with open(fileset_file, "w") as json_file:
         json.dump(new_dataset, json_file, indent=4, sort_keys=True)

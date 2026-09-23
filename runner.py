@@ -31,6 +31,7 @@ if __name__ == "__main__":
             "2022postEE",
             "2023preBPix",
             "2023postBPix",
+            "2024",
         ],
         help="dataset year",
     )
@@ -69,8 +70,19 @@ if __name__ == "__main__":
         "-m",
         "--memory",
         type=str,
-        default="2000",
+        default="4000",
         help="Requested memory (in MB) for the condor job",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="change the number of workers to process the analysis",
+    )
+    parser.add_argument(
+        "--global",
+        action="store_true",
+        help="send xrd-cms-global partition filesets",
     )
     args = parser.parse_args()
 
@@ -91,7 +103,9 @@ if __name__ == "__main__":
             "--output_format",
             args.output_format,
             "--memory",
-            args.memory
+            args.memory,
+            "--workers",
+            str(args.workers)
         ]
         if args.submit:
             cmd_args.append("--submit")
@@ -100,5 +114,7 @@ if __name__ == "__main__":
         if args.label:
             cmd_args.append("--label")
             cmd_args.append(args.label)
+        if getattr(args,"global"):
+            cmd_args.append("--global")
 
         subprocess.run(cmd + cmd_args)

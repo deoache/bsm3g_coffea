@@ -1,6 +1,7 @@
 import copy
 import numpy as np
 import awkward as ak
+import warnings
 from coffea import processor
 from coffea.analysis_tools import PackedSelection, Weights
 from analysis.workflows.config import WorkflowConfigBuilder
@@ -34,7 +35,10 @@ class BaseProcessor(processor.ProcessorABC):
         self,
         workflow: str,
         year: str = "2017",
+        mode="virtual"
     ):
+        assert mode in ["eager", "virtual", "dask"]
+        self._mode = mode
         self.year = year
         self.workflow = workflow
         self.year_key = year[:4]
@@ -89,6 +93,8 @@ class BaseProcessor(processor.ProcessorABC):
                     output["metadata"][category]["cutflow"][cut_name] = 0
 
     def process(self, events):
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        np.seterr(divide="ignore", invalid="ignore")
         # correct objects
         object_corrector_manager(
             events=events,
@@ -112,7 +118,7 @@ class BaseProcessor(processor.ProcessorABC):
             return self.process_shift(events, shift_name="nominal")
 
         # define object-level shifts
-        shifts = [({"Jet": events.Jet, "MET": events.MET, "Muon": events.Muon, "Tau": events.Tau}, "nominal")]
+        shifts = [({"Jet": events.Jet, "MET": events.MET if self.run == "2" else events.PuppiMET, "Muon": events.Muon, "Tau": events.Tau}, "nominal")]
         if self.workflow_config.corrections_config["apply_obj_syst"]:
             if self.run == "2":
                 shifts.extend(
