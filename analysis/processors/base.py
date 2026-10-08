@@ -6,7 +6,6 @@ from coffea import processor
 from coffea.analysis_tools import PackedSelection, Weights
 from analysis.workflows.config import WorkflowConfigBuilder
 from analysis.histograms import HistBuilder, fill_histograms
-from analysis.corrections.jetvetomaps import apply_jetvetomaps
 from analysis.corrections import (
     object_corrector_manager,
     weight_manager,
@@ -31,12 +30,7 @@ def update(events, collections):
 
 
 class BaseProcessor(processor.ProcessorABC):
-    def __init__(
-        self,
-        workflow: str,
-        year: str = "2017",
-        mode="virtual"
-    ):
+    def __init__(self, workflow: str, year: str = "2017", mode="virtual"):
         assert mode in ["eager", "virtual", "dask"]
         self._mode = mode
         self.year = year
@@ -62,99 +56,47 @@ class BaseProcessor(processor.ProcessorABC):
                 selections.append(cut_name)
                 current_selection = selection_manager.all(*selections)
                 if ak.sum(current_selection) != 0:
-                    """
-                    pruned_ev_cutflow = events[current_selection]
-                    for obj in objects:
-                        pruned_ev_cutflow[f"selected_{obj}"] = objects[obj][
-                            current_selection
-                        ]
-                    weights_container_cutflow = weight_manager(
-                        pruned_ev=pruned_ev_cutflow,
-                        year=self.year,
-                        run=self.run,
-                        workflow=self.workflow,
-                        category=category,
-                        workflow_config=self.workflow_config,
-                        variation="nominal",
-                        dataset=dataset,
-                    )
-                    output["metadata"][category]["cutflow"][cut_name] = ak.sum(
-                        weights_container_cutflow.weight()
-                    )
-                    """
                     sumw_cutflow = (
                         ak.sum(events.genWeight[current_selection])
                         if hasattr(events, "genWeight")
                         else len(events[current_selection])
                     )
                     output["metadata"][category]["cutflow"][cut_name] = sumw_cutflow
-                    
+
                 else:
                     output["metadata"][category]["cutflow"][cut_name] = 0
 
     def process(self, events):
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         np.seterr(divide="ignore", invalid="ignore")
-        # correct objects
-        object_corrector_manager(
+
+        self.is_mc = hasattr(events, "genWeight")
+
+        vetoed_events, shifts = object_corrector_manager(
             events=events,
             year=self.year,
             run=self.run,
             workflow_config=self.workflow_config,
             dataset=events.metadata["dataset"],
         )
-        # apply jet veto maps
-        if "jets_veto" in self.workflow_config.corrections_config["objects"]:
-            events = apply_jetvetomaps(events, self.year)
-            
-        # check if sample is MC
-        self.is_mc = hasattr(events, "genWeight")
-        if not self.is_mc:
-            # add genPartFlav fields to leptons
-            events["Muon", "genPartFlav"] = ak.zeros_like(events.Muon.pt)
-            events["Electron", "genPartFlav"] = ak.zeros_like(events.Electron.pt)
-
-        if not self.is_mc:
-            return self.process_shift(events, shift_name="nominal")
-
-        # define object-level shifts
-        shifts = [({"Jet": events.Jet, "MET": events.MET if self.run == "2" else events.PuppiMET, "Muon": events.Muon, "Tau": events.Tau}, "nominal")]
-        if self.workflow_config.corrections_config["apply_obj_syst"]:
-            if self.run == "2":
-                shifts.extend(
-                    [
-                        ({"Jet": events.Jet, "MET": events.MET.rochester.up, "Muon": events.Muon.rochester.up, "Tau": events.Tau}, f"CMS_rochester_{self.year_key}Up"),
-                        ({"Jet": events.Jet, "MET": events.MET.rochester.down, "Muon": events.Muon.rochester.down, "Tau": events.Tau}, f"CMS_rochester_{self.year_key}Down"),
-                        ({"Jet": events.Jet.JES_jes.up, "MET": events.MET.JES_jes.up, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_scale_j_{self.year_key}Up"),
-                        ({"Jet": events.Jet.JES_jes.down, "MET": events.MET.JES_jes.down, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_scale_j_{self.year_key}Down"),
-                        ({"Jet": events.Jet.JER.up, "MET": events.MET.JER.up, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_res_j_{self.year_key}Up"),
-                        ({"Jet": events.Jet.JER.down, "MET": events.MET.JER.down, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_res_j_{self.year_key}Down"),
-                        ({"Jet": events.Jet, "MET": events.MET.MET_UnclusteredEnergy.up, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_met_unclustered_{self.year_key}Up"),
-                        ({"Jet": events.Jet, "MET": events.MET.MET_UnclusteredEnergy.down, "Muon": events.Muon, "Tau": events.Tau}, f"CMS_met_unclustered_{self.year_key}Down"),
-                        ({"Jet": events.Jet, "MET": events.MET.tau_energy.up, "Muon": events.Muon, "Tau": events.Tau.tau_energy.up}, f"CMS_t_energy_{self.year_key}Up"),
-                        ({"Jet": events.Jet, "MET": events.MET.tau_energy.down, "Muon": events.Muon, "Tau": events.Tau.tau_energy.down}, f"CMS_t_energy_{self.year_key}Down"),
-                    ]
-                )
         return processor.accumulate(
-            self.process_shift(update(events, collections), name)
-            for collections, name in shifts
+            self.process_shift(update(vetoed_events, collections), shift)
+            for collections, shift in shifts
         )
 
     def process_shift(self, events, shift_name):
         year = self.year
         is_mc = self.is_mc
-        # get dataset name
         dataset = events.metadata["dataset"]
+
         # initialize output dictionary
         output = {}
         output["metadata"] = {}
-        if shift_name == "nominal":
+        if shift_name is None:
             # save sum of weights before object_selection
             sumw = ak.sum(events.genWeight) if is_mc else len(events)
             output["metadata"].update({"sumw": sumw})
-
             for category in self.workflow_config.event_selection["categories"]:
-
                 output["metadata"].update({category: {"cutflow": {"initial": sumw}}})
 
         # ----------------------------------------------------------------------------------
@@ -169,7 +111,6 @@ class BaseProcessor(processor.ProcessorABC):
         # ----------------------------------------------------------------------------------
         # itinialize selection manager and add all selections from workflow
         selection_manager = PackedSelection()
-        #  to selector manager
         event_selection = self.workflow_config.event_selection
         if "hlt_paths" in event_selection:
             hlt_paths = event_selection["hlt_paths"]
@@ -204,10 +145,10 @@ class BaseProcessor(processor.ProcessorABC):
                     category=category,
                     run=self.run,
                     workflow_config=self.workflow_config,
-                    variation=shift_name,
+                    variation="nominal" if shift_name is None else shift_name,
                     dataset=dataset,
                 )
-                if shift_name == "nominal":
+                if shift_name is None:
                     # save number of events after selection to metadata
                     weighted_final_nevents = ak.sum(weights_container.weight())
                     output["metadata"][category].update(
