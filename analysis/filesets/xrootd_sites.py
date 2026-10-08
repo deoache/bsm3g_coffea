@@ -43,5 +43,8 @@ xroot_to_site =  {
     "root://eos01.grid.cyfronet.pl:1094": "T2_PL_Cyfronet",
     "root://xroot02.ncg.ingrid.pt:1094": "T2_PT_NCG_Lisbon",
     "root://se01.grid.nchc.org.tw": "T2_TW_NCHC",
-    "root://xrootd01.jinr-t1.ru:1094": "T1_RU_JINR_Disk"
+    "root://xrootd01.jinr-t1.ru:1094": "T1_RU_JINR_Disk",
+    "root://redir.t2.ucsd.edu:1095": "T2_US_UCSD",
+    "root://xroot01.ncg.ingrid.pt:1094": "T2_PT_NCG_Lisbon",
+    "root://cmsio3.rc.ufl.edu:1094": "T2_US_Florida",
 }
