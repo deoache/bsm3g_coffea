@@ -28,12 +28,6 @@ if __name__ == "__main__":
         help="(Optional) List of samples to use. If omitted, all available samples will be used",
     )
     parser.add_argument(
-        "--image",
-        dest="image",
-        type=str,
-        default="/cvmfs/unpacked.cern.ch/registry.hub.docker.com/coffeateam/coffea-dask-almalinux9:2025.10.1-py3.10",
-    )
-    parser.add_argument(
         "--site",
         dest="site",
         default="root://xrootd-vanderbilt.sites.opensciencegrid.org:1094",
@@ -44,6 +38,11 @@ if __name__ == "__main__":
         "--skip_site",
         action="store_true",
         help="Skip white/black sites initialization",
+    )
+    parser.add_argument(
+        "--add_signal",
+        action="store_true",
+        help="Build signal datasets",
     )
     args = parser.parse_args()
 
@@ -62,17 +61,10 @@ if __name__ == "__main__":
     # keep container Python isolated from host user-site packages (~/.local),
     # otherwise dask/distributed versions can be mixed
     samples_str = " ".join(args.samples) if args.samples else ""
-    cmd = (
-        f"singularity exec "
-        f"--env PYTHONNOUSERSITE=1 "
-        f"-B /afs "
-        f"-B /cvmfs "
-        f"-B analysis/filesets/rucio_utils.py:/usr/local/lib/python3.10/site-packages/coffea/dataset_tools/rucio_utils.py "
-        f"{args.image} "
-        f"python3 analysis/filesets/build_filesets.py --year {args.year} --samples {samples_str}"
-    )
+    cmd = f"python3 analysis/filesets/build_filesets.py --year {args.year} --samples {samples_str}"
     subprocess.run(cmd, shell=True)
 
     # add signal samples
-    signal_cmd = f"python3 analysis/filesets/build_signal_filesets.py --year {args.year} --site {args.site}"
-    subprocess.run(signal_cmd, shell=True)
+    if args.add_signal:
+        signal_cmd = f"python3 analysis/filesets/build_signal_filesets.py --year {args.year} --site {args.site}"
+        subprocess.run(signal_cmd, shell=True)
