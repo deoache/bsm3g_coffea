@@ -8,17 +8,17 @@ class Paths:
         if eos:
             # finds the /eos user directory
             user = os.environ["USER"]
-            self.root_path = pathlib.Path(f"/eos/user/{user[0]}/{user}/bsm3g_coffea_outputs")
+            self.root_path = pathlib.Path(
+                f"/eos/user/{user[0]}/{user}/bsm3g_coffea_outputs"
+            )
         else:
             # finds the root path as the directory one level upwards of where this file is located
-            self.root_path = pathlib.Path(__file__).resolve().parent.parent
+            self.root_path = (
+                pathlib.Path(__file__).resolve().parent.parent.parent / "outputs"
+            )
 
     def workflow_path(
-        self,
-        workflow: str,
-        label: str,
-        year: str,
-        dataset: str
+        self, workflow: str, label: str, year: str, dataset: str
     ) -> pathlib.Path:
         """
         Safely return a path by creating the parent directories to avoid errors when writing to the path.
@@ -32,16 +32,7 @@ class Paths:
             Input path.
         """
         workflow_path = "/".join(
-            [
-                elem
-                for elem in [
-                    workflow,
-                    label,
-                    year,
-                    dataset
-                ]
-                if elem is not None
-            ]
+            [elem for elem in [workflow, label, year, dataset] if elem is not None]
         )
         # make output directory
         output_path = self.root_path / workflow_path
