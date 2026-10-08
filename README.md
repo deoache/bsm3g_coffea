@@ -589,7 +589,7 @@ More info on Hist histograms [here](https://hist.readthedocs.io/en/latest/)
 
 ### Local test
 
-Local tests can be run using the `tester.ipynb`. There, you can set year, dataset, and executor (`iterative` or `futures`). Feel free to add more datasets in case you need to run a particular workflow. 
+Local tests can be run using the `tester.ipynb`. There, you can set the workflow, year, dataset, and executor (feel free to add more datasets in case you need to run a particular workflow). This way, you can check that the workflow is running without issues before submitting batch jobs. It also allows you to interact with the output to check that it makes sense and contains the expected information.
 
 To ensure that the notebook uses the same software environment as the analysis, it should be executed with the LCG_110 environment which can be added as a Jupyter kernel by running the following commands in a terminal:
 
@@ -607,7 +607,7 @@ cat << 'EOF' > ~/.local/share/jupyter/kernels/lcg_110/kernel.json
 }
 EOF
 ```
-This way, you can check that the workflow is running without issues before submitting batch jobs. It also allows you to interact with the output to check that it makes sense and contains the expected information. After creating the kernel, refresh the available Jupyter kernels in your IDE. If the new kernel is not detected, restart the IDE. The LCG 110 (CVMFS) kernel should then be available for selection in the notebook.
+After creating the kernel, refresh the available Jupyter kernels in your IDE. If the new kernel is not detected, restart the IDE. The LCG 110 (CVMFS) kernel should then be available for selection in the notebook.
 
 
 ### Submit Condor jobs
