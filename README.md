@@ -5,11 +5,47 @@
 
 Python package that uses a columnar framework to process input tree-based [NanoAOD](https://twiki.cern.ch/twiki/bin/view/CMSPublic/WorkBookNanoAOD) files using the [coffea](https://coffeateam.github.io/coffea/) and [scikit-hep](https://scikit-hep.org) Python libraries.
 
+- [Setting up the environment](#Setting-up-the-environment)
 - [Input filesets](#Input-filesets)
 - [Workflows](#Workflows)
-- [Local run](#Local-run)
+- [Local test](#Local-test)
 - [Submit Condor jobs](#Submit-Condor-jobs)
 - [Postprocessing](#Postprocessing)
+
+## Setting up the environment
+
+**1. Log in to lxplus and clone the repository**
+   
+If you haven't done so already:
+```bash
+ssh <your_username>@lxplus.cern.ch
+
+git clone -b coffea-2026 https://github.com/deoache/bsm3g_coffea.git
+cd bsm3g_coffea
+```
+
+**2. Initialize a valid CMS grid proxy**
+
+To access remote datasets via xrootd, you need a valid grid proxy.
+
+To generate the proxy:
+```bash
+voms-proxy-init --voms cms
+```
+If you're not registered in the CMS VO, follow these [instructions](https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideLcgAccess) to request access.
+
+
+**3. Initialize the environment**
+
+Run the following command
+```bash
+source setup.sh
+```
+This loads the CERN LCG_110 environment, which provides the required software stack, including Coffea 2026.5.0.
+
+The setup script also ensures that the rucio-clients package is available. If it is not already installed, it is automatically installed in a local directory.
+
+The environment must be initialized in each new shell session before running the analysis.
 
 
 ## Input filesets
@@ -80,7 +116,10 @@ The available workflows are:
         * [qcd_cr1T_ele](https://github.com/deoache/bsm3g_coffea/blob/main/analysis/workflows/qcd_cr1T_ele.yaml)
         * [qcd_cr2T_ele](https://github.com/deoache/bsm3g_coffea/blob/main/analysis/workflows/qcd_cr2T_ele.yaml)
 * VBF SUSY
-    * [ztojets](https://github.com/deoache/bsm3g_coffea/blob/main/analysis/workflows/ztojets.yaml)
+    * [zplusjets_central](https://github.com/deoache/bsm3g_coffea/blob/main/analysis/workflows/zplusjets_central.yaml)
+    * [zplusjets_vbf](https://github.com/deoache/bsm3g_coffea/blob/main/analysis/workflows/zplusjets_vbf.yaml)
+    * [wplusjets_central](https://github.com/deoache/bsm3g_coffea/blob/main/analysis/workflows/wplusjets_central.yaml)
+    * [wplusjets_vbf](https://github.com/deoache/bsm3g_coffea/blob/main/analysis/workflows/wplusjets_vbf.yaml)
 
 
 <details>
@@ -548,43 +587,32 @@ More info on Hist histograms [here](https://hist.readthedocs.io/en/latest/)
 </details>
 <br>
 
-### Local run
+### Local test
 
-To run locally, you can use the Coffea-Casa tool, which you can accessd [here](https://coffea.casa/hub/login?next=%2Fhub%2F) (**make sure to select the coffea 0.7.26 image**) (more info on coffea-casa [here](https://coffea-casa.readthedocs.io/en/latest/)). 
+Local tests can be run using the `tester.ipynb`. There, you can set year, dataset, and executor (`iterative` or `futures`). Feel free to add more datasets in case you need to run a particular workflow. 
 
-Log in and clone the repository
+To ensure that the notebook uses the same software environment as the analysis, it should be executed with the LCG_110 environment which can be added as a Jupyter kernel by running the following commands in a terminal:
+
 ```bash
-git clone https://github.com/deoache/bsm3g_coffea.git
+mkdir -p ~/.local/share/jupyter/kernels/lcg_110
+cat << 'EOF' > ~/.local/share/jupyter/kernels/lcg_110/kernel.json
+{
+ "argv": [
+  "/bin/bash",
+  "-c",
+  "source /cvmfs/sft.cern.ch/lcg/views/LCG_110/x86_64-el9-gcc13-opt/setup.sh && exec python3 -m ipykernel_launcher -f {connection_file}"
+ ],
+ "display_name": "LCG 110 (CVMFS)",
+ "language": "python"
+}
+EOF
 ```
-Then, you can use the `tester.ipynb` notebook to test a workflow. There, you can select the year, dataset, and executor (`iterative` or `futures`). Feel free to add more datasets in case you need to run a particular workflow (and don't forget to use `root://xcache//` in order to be able to access the dataset).
-
-This way, you can check that the workflow is running without issues before submitting batch jobs. It also allows you to interact with the output to check that it makes sense and contains the expected information.
+This way, you can check that the workflow is running without issues before submitting batch jobs. It also allows you to interact with the output to check that it makes sense and contains the expected information. After creating the kernel, refresh the available Jupyter kernels in your IDE. If the new kernel is not detected, restart the IDE. The LCG 110 (CVMFS) kernel should then be available for selection in the notebook.
 
 
 ### Submit Condor jobs
 
-**1. Log in to lxplus and clone the repository**
-   
-If you haven't done so already:
-```bash
-ssh <your_username>@lxplus.cern.ch
-
-git clone https://github.com/deoache/bsm3g_coffea.git
-cd bsm3g_coffea
-```
-
-**2. Initialize a valid CMS grid proxy**
-
-To access remote datasets via xrootd, you need a valid grid proxy.
-
-To generate the proxy:
-```bash
-voms-proxy-init --voms cms
-```
-If you're not registered in the CMS VO, follow these [instructions](https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideLcgAccess) to request access.
-
-
-**3. Submit all datasets from a workflow**
+**Submit all datasets from a workflow**
 
 Use [runner.py](https://github.com/deoache/higgscharm/blob/lxplus/runner.py) to submit jobs for a specific workflow and campaign/year. 
 ```bash
@@ -596,9 +624,9 @@ You could use [submit_condor.py](https://github.com/deoache/bsm3g_coffea/blob/ma
 python3 submit_condor.py --workflow <workflow> --dataset <dataset> --year <campaign> --submit --eos
 ```
 
-**Note**: It's recommended to add the `--eos` flag to save the outputs to your `/eos` area, so the postprocessing step can be done from [SWAN](https://swan-k8s.cern.ch/hub/spawn). In this case, **you need to clone the repo before submitting jobs** in [SWAN](https://swan-k8s.cern.ch/hub/spawn) (select the 105a release) in order to be able to run the postprocess.
+**Note**: It's recommended to add the `--eos` flag to save the outputs to your `/eos` area
 
-**4. Monitor job status**
+**Monitor job status**
 
 To continuously monitor your Condor jobs:
 ```bash
