@@ -104,7 +104,7 @@ class ObjectSelector:
 
     def select_ztojets_met(self, obj_name):
         # add muons pT to MET to simulate a 0-lepton final state
-        all_muons = ak.sum(self.objects["muons"], axis=1)
+        all_muons = self.objects["muons"].sum(axis=1)
         muons2D = ak.zip(
             {
                 "pt": all_muons.pt,
@@ -126,47 +126,80 @@ class ObjectSelector:
             behavior=vector.backends.awkward.behavior,
         )
         self.objects[obj_name] = met2D + muons2D
-        
+
     # --------------------------------------------------------------------------------
     # QCD leptos
     # --------------------------------------------------------------------------------
-
     def select_qcd_tf_electrons(self, obj_name):
         from analysis.workflows.config import WorkflowConfigBuilder
         from analysis.selections.trigger import trigger_match_mask
+
         qcd_tf_electrons = self.events.Electron
-        
-        qcd_tf_electrons["is_loose"] = working_points.electrons_id(self.events, 'loose') & working_points.electrons_iso(self.events, 'loose')
-        qcd_tf_electrons["is_tight"] = working_points.electrons_id(self.events, 'wp80iso')
-        qcd_tf_electrons["is_not_tight"] = ~working_points.electrons_id(self.events, 'wp80iso')
-        qcd_tf_electrons["is_loose_not_tight"] = working_points.electrons_id(self.events, 'loose') & working_points.electrons_iso(self.events, 'loose') & ~working_points.electrons_id(self.events, 'wp80iso')
+
+        qcd_tf_electrons["is_loose"] = working_points.electrons_id(
+            self.events, "loose"
+        ) & working_points.electrons_iso(self.events, "loose")
+        qcd_tf_electrons["is_tight"] = working_points.electrons_id(
+            self.events, "wp80iso"
+        )
+        qcd_tf_electrons["is_not_tight"] = ~working_points.electrons_id(
+            self.events, "wp80iso"
+        )
+        qcd_tf_electrons["is_loose_not_tight"] = (
+            working_points.electrons_id(self.events, "loose")
+            & working_points.electrons_iso(self.events, "loose")
+            & ~working_points.electrons_id(self.events, "wp80iso")
+        )
         qcd_tf_electrons["is_barrel"] = np.abs(self.events.Electron.eta) < 1.44
 
         config_builder = WorkflowConfigBuilder(workflow="qcd_tf_ele")
         workflow_config = config_builder.build_workflow_config()
         event_selection = workflow_config.event_selection
         hlt_paths = event_selection["hlt_paths"]
-        qcd_tf_electrons["is_matched"] = trigger_match_mask(self.events, hlt_paths, self.year, self.events.Electron)
+        qcd_tf_electrons["is_matched"] = trigger_match_mask(
+            self.events, hlt_paths, self.year, self.events.Electron
+        )
 
-        qcd_tf_electrons["is_matched_tight"] = qcd_tf_electrons.is_matched & qcd_tf_electrons.is_tight
+        qcd_tf_electrons["is_matched_tight"] = (
+            qcd_tf_electrons.is_matched & qcd_tf_electrons.is_tight
+        )
         self.objects["electrons"] = qcd_tf_electrons
 
     def select_qcd_tf_muons(self, obj_name):
         from analysis.workflows.config import WorkflowConfigBuilder
         from analysis.selections.trigger import trigger_match_mask
+
         qcd_tf_muons = self.events.Muon
-        
-        qcd_tf_muons["is_loose"] = working_points.muons_id(self.events, 'loose') & working_points.muons_iso(self.events, 'loose') 
-        qcd_tf_muons["is_tight"] = working_points.muons_id(self.events, 'tight') & working_points.muons_iso(self.events, 'tight')
-        qcd_tf_muons["is_not_tight"] = ~(working_points.muons_id(self.events, 'tight') & working_points.muons_iso(self.events, 'tight'))
-        qcd_tf_muons["is_loose_not_tight"] = working_points.muons_iso(self.events, 'loose') & working_points.muons_id(self.events, 'loose') & ~(working_points.muons_id(self.events, 'tight') & working_points.muons_iso(self.events, 'tight'))
+
+        qcd_tf_muons["is_loose"] = working_points.muons_id(
+            self.events, "loose"
+        ) & working_points.muons_iso(self.events, "loose")
+        qcd_tf_muons["is_tight"] = working_points.muons_id(
+            self.events, "tight"
+        ) & working_points.muons_iso(self.events, "tight")
+        qcd_tf_muons["is_not_tight"] = ~(
+            working_points.muons_id(self.events, "tight")
+            & working_points.muons_iso(self.events, "tight")
+        )
+        qcd_tf_muons["is_loose_not_tight"] = (
+            working_points.muons_iso(self.events, "loose")
+            & working_points.muons_id(self.events, "loose")
+            & ~(
+                working_points.muons_id(self.events, "tight")
+                & working_points.muons_iso(self.events, "tight")
+            )
+        )
         qcd_tf_muons["is_barrel"] = np.abs(self.events.Muon.eta) < 1.479
 
         config_builder = WorkflowConfigBuilder(workflow="qcd_tf_mu")
         workflow_config = config_builder.build_workflow_config()
         event_selection = workflow_config.event_selection
         hlt_paths = event_selection["hlt_paths"]
-        qcd_tf_muons["is_matched"] = trigger_match_mask(self.events, hlt_paths, self.year, self.events.Muon)
+        qcd_tf_muons["is_matched"] = trigger_match_mask(
+            self.events, hlt_paths, self.year, self.events.Muon
+        )
 
-        qcd_tf_muons["is_matched_tight"] = qcd_tf_muons.is_matched & qcd_tf_muons.is_tight
+        qcd_tf_muons["is_matched_tight"] = (
+            qcd_tf_muons.is_matched & qcd_tf_muons.is_tight
+        )
         self.objects["muons"] = qcd_tf_muons
