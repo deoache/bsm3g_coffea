@@ -8,9 +8,10 @@ from analysis.corrections.utils import get_pog_json
 def apply_met_phi_corrections(
     events: ak.Array,
     year: str,
+    shifts: list,
 ) -> Tuple[ak.Array, ak.Array]:
     """
-    Apply MET phi modulation corrections (only for Run2)
+    Apply MET phi modulation corrections
 
     Parameters:
     -----------
@@ -31,12 +32,13 @@ def apply_met_phi_corrections(
         "2018": [315252, 325274],
         "2022preEE": [355094, 359017],
         "2022postEE": [359045, 362760],
+        # "2023preBPix": [367080, 369802],
+        # "2023postBPix": [369803, 372415],
+        # "2024": [379412, 387121]
     }
+    run_key = "run3" if year.startswith("202") else "run2"
+    met_key = "MET" if run_key == "run2" else "PuppiMET"
     if year in run_ranges:
-        run_key = (
-            "run3" if year.startswith("2022") or year.startswith("2023") else "run2"
-        )
-        met_key = "MET" if run_key == "run2" else "PuppiMET"
         cset_file = (
             get_pog_json(json_name="met", year=year)
             if run_key == "run2"
@@ -89,6 +91,10 @@ def apply_met_phi_corrections(
             )
         except:
             pass
+
+    for i in range(len(shifts)):
+        shifts[i][0][met_key] = events[met_key]
+    return shifts
 
 
 def corrected_polar_met(

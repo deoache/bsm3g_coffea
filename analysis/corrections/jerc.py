@@ -10,7 +10,6 @@ from analysis.filesets.utils import get_dataset_era
 from coffea.lookup_tools import extractor
 from coffea.jetmet_tools import JECStack, CorrectedJetsFactory, CorrectedMETFactory
 
-
 # Run3 recommendations: # https://cms-jerc.web.cern.ch/JEC/
 with importlib.resources.open_text(
     f"analysis.corrections", f"jerc_params.yaml"
@@ -96,12 +95,17 @@ def get_jet_evaluator(year):
 
 def apply_jerc_corrections(
     events,
-    year,
-    dataset,
-    apply_jec,
-    apply_jer,
-    apply_junc,
+    year: str,
+    dataset: str,
+    shifts: dict,
+    corrections_config: dict,
+    apply_jec=True,
+    apply_jer=False,
+    apply_junc=True,
 ):
+    if hasattr(events, "genWeight"):
+        apply_jer = True
+
     era = get_dataset_era(dataset, year)
     run_key = "Run3" if year.startswith("202") else "Run2"
 
@@ -162,38 +166,22 @@ def apply_jerc_corrections(
         jec_options.update(jec_input_options["junc"])
 
     # set jerc name map (I don't use JECStack.blank_name_map since it includes 'ptRaw' and 'massRaw' by default)
+
     jec_name_map = {
-        "Run2": {
-            "JetPt": "pt",
-            "JetMass": "mass",
-            "JetEta": "eta",
-            "JetA": "area",
-            "ptGenJet": "pt_gen",
-            "ptRaw": "pt_raw",
-            "massRaw": "mass_raw",
-            "Rho": "event_rho",
-            "METpt": "pt",
-            "METphi": "phi",
-            "JetPhi": "phi",
-            "UnClusteredEnergyDeltaX": "MetUnclustEnUpDeltaX",
-            "UnClusteredEnergyDeltaY": "MetUnclustEnUpDeltaY",
-        },
-        "Run3": {
-            "JetPt": "pt",
-            "JetMass": "mass",
-            "JetEta": "eta",
-            "JetA": "area",
-            "ptGenJet": "pt_gen",
-            "Rho": "event_rho",
-            "METpt": None,
-            "METphi": None,
-            "JetPhi": "phi",
-            "UnClusteredEnergyDeltaX": None,
-            "UnClusteredEnergyDeltaY": None,
-        },
+        "JetPt": "pt",
+        "JetMass": "mass",
+        "JetEta": "eta",
+        "JetA": "area",
+        "ptGenJet": "pt_gen",
+        "Rho": "event_rho",
+        "METpt": "pt",
+        "METphi": "phi",
+        "JetPhi": "phi",
+        "UnClusteredEnergyDeltaX": "MetUnclustEnUpDeltaX",
+        "UnClusteredEnergyDeltaY": "MetUnclustEnUpDeltaY",
     }
     if apply_jec:
-        jec_name_map[run_key].update(
+        jec_name_map.update(
             {
                 "ptRaw": "pt_raw",
                 "massRaw": "mass_raw",
@@ -202,7 +190,7 @@ def apply_jerc_corrections(
     if era == "MC":
         # create MC factory with jec, jer and junc stack
         stack = JECStack(jec_options)
-        jec_factory = CorrectedJetsFactory(jec_name_map[run_key], stack)
+        jec_factory = CorrectedJetsFactory(jec_name_map, stack)
     else:
         # create a separate factory for the data era
         jec_inputs_data = {}
@@ -215,11 +203,77 @@ def apply_jerc_corrections(
                 if src in key:
                     jec_inputs_data[key] = jet_evaluator[key]
         jec_stack_data = JECStack(jec_inputs_data)
-        jec_factory = CorrectedJetsFactory(jec_name_map[run_key], jec_stack_data)
+        jec_factory = CorrectedJetsFactory(jec_name_map, jec_stack_data)
 
     # update Jet collection
     events["Jet"] = jec_factory.build(events.Jet)
 
-    if run_key == "Run2":
-        met_factory = CorrectedMETFactory(jec_name_map[run_key])
-        events["MET"] = met_factory.build(events.MET, events.Jet)
+    met_key = "MET" if run_key == "Run2" else "PuppiMET"
+    if met_key == "PuppiMET":
+        events["PuppiMET", "MetUnclustEnUpDeltaX"] = (
+            events.PuppiMET.ptUnclusteredUp * np.cos(events.PuppiMET.phiUnclusteredUp)
+        )
+        events["PuppiMET", "MetUnclustEnUpDeltaY"] = (
+            events.PuppiMET.ptUnclusteredUp * np.sin(events.PuppiMET.phiUnclusteredUp)
+        )
+
+    met_factory = CorrectedMETFactory(jec_name_map)
+    events[met_key] = met_factory.build(events[met_key], events.Jet)
+
+    jets, met = events.Jet, events[met_key]
+
+    if hasattr(events, "genWeight") and corrections_config["apply_obj_syst"]:
+        if "JES_jes" in jets.fields and "JES_jes" in met.fields:
+            shifts += [
+                (
+                    {
+                        "Jet": jets.JES_jes.up,
+                        "MET": met.JES_jes.up,
+                    },
+                    f"CMS_scale_j_{year[:4]}Up",
+                ),
+                (
+                    {
+                        "Jet": jets.JES_jes.down,
+                        "MET": met.JES_jes.down,
+                    },
+                    f"CMS_scale_j_{year[:4]}Down",
+                ),
+            ]
+        if "JER" in jets.fields and "JER" in met.fields:
+            shifts += [
+                (
+                    {
+                        "Jet": jets.JER.up,
+                        "MET": met.JER.up,
+                    },
+                    f"CMS_res_j_{year[:4]}Up",
+                ),
+                (
+                    {
+                        "Jet": jets.JER.down,
+                        "MET": met.JER.down,
+                    },
+                    f"CMS_res_j_{year[:4]}Down",
+                ),
+            ]
+        if "MET_UnclusteredEnergy" in met.fields:
+            shifts += [
+                (
+                    {
+                        "Jet": jets,
+                        "MET": met.MET_UnclusteredEnergy.up,
+                    },
+                    f"CMS_met_unclustered_{year[:4]}Up",
+                ),
+                (
+                    {
+                        "Jet": jets,
+                        "MET": met.MET_UnclusteredEnergy.down,
+                    },
+                    f"CMS_met_unclustered_{year[:4]}Down",
+                ),
+            ]
+
+    shifts.insert(0, ({"Jet": jets, "MET": met}, None))
+    return shifts

@@ -6,7 +6,7 @@ from analysis.working_points import working_points
 from analysis.corrections.utils import get_pog_json
 
 
-def apply_jetvetomaps(events: ak.Array, year: str, mapname: str = "jetvetomap"):
+def jetvetomap(events: ak.Array, year: str, mapname: str = "jetvetomap"):
     """
     These are the jet veto maps showing regions with an excess of jets (hot zones) and lack of jets
     (cold zones). Using the phi-symmetry of the CMS detector, these areas with detector and or
@@ -70,7 +70,7 @@ def apply_jetvetomaps(events: ak.Array, year: str, mapname: str = "jetvetomap"):
     jets_eta = ak.fill_none(in_jets.eta, 0.0)
     jets_phi = ak.fill_none(in_jets.phi, 0.0)
 
-    vetomaps = cset[hname[year]].evaluate(mapname, jets_eta, jets_phi)
-    vetomaps_mask = ak.any(ak.unflatten(vetomaps, n) > 0, axis=1)
-    vetoed_events = events[~vetomaps_mask]
-    return vetoed_events
+    vetomaps_flat = cset[hname[year]].evaluate(mapname, jets_eta, jets_phi)
+    vetomaps_flat = ak.where(in_jet_mask, vetomaps_flat > 0, 0)
+    vetomaps = ak.any(ak.unflatten(vetomaps_flat, n), axis=1)
+    return vetomaps

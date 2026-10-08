@@ -2,39 +2,61 @@ import copy
 import correctionlib
 import awkward as ak
 from pathlib import Path
+import numpy as np
 
 
-def add_isr_weight(events, weights, year, variation, dataset, fit, one_dim):
-    if dataset.startswith("DYJetsToLL"):
-        # get input values
-        dimuon_pt = ak.firsts(events.selected_dimuons.pt)
-        njet = ak.num(events.selected_jets)
+def getParticles(
+    genparticles, lowid=24, highid=24, flags=["fromHardProcess", "isLastCopy"]
+):
+    absid = abs(genparticles.pdgId)
+    return genparticles[
+        ((absid >= lowid) & (absid <= highid)) & genparticles.hasFlags(flags)
+    ]
+
+
+def add_isr_weight(events, weights, year, variation, dataset, fit, one_dim, workflow):
+    if "zplusjets" in workflow or "zto" in workflow:
+        ds = "DYJetsToLL"
+    elif "wplusjets" in workflow:
+        ds = "WJets"
+
+    if dataset.startswith(ds):
+
+        # load correction set and compute SF
         if one_dim:
-            in_binning = (dimuon_pt > 0.0) & (dimuon_pt < 1000.0)
-        else: 
-            in_binning = (dimuon_pt > 0.0) & (dimuon_pt < 1000.0) & (njet > 0) & (njet < 5)
-        selected_dimuon_pt = dimuon_pt.mask[in_binning]
-        selected_njet = njet.mask[in_binning]
-        selected_dimuon_pt = ak.fill_none(selected_dimuon_pt, 500.0)
-        selected_njet = ak.fill_none(selected_njet, 2.0)
-
-        # load correction set
-        if one_dim:
-            fname = f"{Path.cwd()}/analysis/data/{year}_ztojets_isr_weight_1d"
+            fname = f"{Path.cwd()}/analysis/data/{year}_ztomumu_isr_weight_1d"
         else:
-            fname = f"{Path.cwd()}/analysis/data/{year}_ztojets_isr_weight"
+            fname = f"{Path.cwd()}/analysis/data/{year}_ztomumu_isr_weight"
             if fit:
                 fname += "_fit"
         fname += ".json.gz"
         cset = correctionlib.CorrectionSet.from_file(fname)
 
-        # compute weight
-        if one_dim:
-            sf = cset["isr_weight"].evaluate(selected_dimuon_pt)    
+        # select transverse momemntum
+        if ds == "DYJetsToLL":
+            # for DY+jets, select dimuon pT
+            pt = ak.firsts(events.selected_dimuons.pt)
         else:
-            sf = cset["isr_weight"].evaluate(selected_dimuon_pt, selected_njet)
-        weight = ak.where(in_binning, sf, ak.ones_like(sf))
+            # for W+jets, select gen-level W(-> mu nu) pT
+            ws = getParticles(events.GenPart, 24)
+            is_from_munu = ak.sum(ak.firsts(np.abs(ws.children.pdgId)), axis=1) == 27
+            ws = ws.mask[is_from_munu]
+            pt = ak.firsts(ws.pt)
+
+        # select number of jets
+        njet = ak.num(events.selected_jets)
+
+        none_mask = ak.is_none(pt) | ak.is_none(njet)
+        selected_pt = ak.fill_none(pt, 500.0)
+        selected_njet = ak.fill_none(njet, 2.0)
+
+        if one_dim:
+            sf = cset["isr_weight"].evaluate(selected_pt)
+        else:
+            sf = cset["isr_weight"].evaluate(selected_pt, selected_njet)
+
+        # add weight to weights container
         weights.add(
             name="isr_weight",
-            weight=weight,
+            weight=ak.where(none_mask, ak.ones_like(sf), sf),
         )

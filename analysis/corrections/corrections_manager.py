@@ -1,5 +1,6 @@
 import numpy as np
 from coffea.analysis_tools import Weights
+from analysis.corrections.jetvetomaps import jetvetomap
 from analysis.corrections import (
     TauCorrector,
     BTagCorrector,
@@ -13,7 +14,6 @@ from analysis.corrections import (
     add_pujetid_weight,
     add_scalevar_weight,
     add_top_boost_weight,
-    apply_jet_corrections,
     apply_jerc_corrections,
     add_l1prefiring_weight,
     add_partonshower_weight,
@@ -30,43 +30,90 @@ def object_corrector_manager(events, year, run, dataset, workflow_config):
 
     objcorr_config = workflow_config.corrections_config["objects"]
 
-    if "jets" in objcorr_config:
-        if run == "2":
-            apply_jet_corrections(events, year)
-        elif run == "3":
-            apply_jec = True
-            apply_jer = False
-            apply_junc = False
-            if hasattr(events, "genWeight"):
-                apply_jer = True
-            apply_jerc_corrections(
+    shifts = []
+    if objcorr_config:
+
+        if "jets" in objcorr_config:
+            shifts = apply_jerc_corrections(
                 events,
                 year=year,
                 dataset=dataset,
-                apply_jec=apply_jec,
-                apply_jer=apply_jer,
-                apply_junc=apply_junc,
+                shifts=shifts,
+                corrections_config=workflow_config.corrections_config,
             )
-    if "muons" in objcorr_config:
-        # apply rochester corretions to muons
-        if run == "2":
-            apply_rochester_corrections_run2(events, year)
-        elif run == "3":
-            apply_rochester_corrections_run3(events, year)
-    if "electrons" in objcorr_config:
-        if run == "3":
-            apply_electron_ss_corrections(
-                events=events,
-                year=year,
-            )
-    if "taus" in objcorr_config:
-        if hasattr(events, "genWeight"):
+        else:
+            met_field_key = "MET" if year.startswith("201") else "PuppiMET"
+            shifts = [({"Jet": events.Jet, "MET": events[met_field_key]}, None)]
+
+        if "muons" in objcorr_config:
+            # apply rochester corretions to muons
+            if run == "2":
+                shifts = apply_rochester_corrections_run2(
+                    events,
+                    year=year,
+                    workflow_config=workflow_config,
+                    shifts=shifts,
+                    corrections_config=workflow_config.corrections_config,
+                )
+            elif run == "3":
+                shifts = apply_rochester_corrections_run3(
+                    events,
+                    year=year,
+                    workflow_config=workflow_config,
+                    shifts=shifts,
+                    corrections_config=workflow_config.corrections_config,
+                )
+        else:
+            for i in range(len(shifts)):
+                shifts[i][0]["Muon"] = events.Muon
+
+        if "electrons" in objcorr_config:
+            if run == "3":
+                shifts = apply_electron_ss_corrections(
+                    events=events,
+                    year=year,
+                    shifts=shifts,
+                    corrections_config=workflow_config.corrections_config,
+                )
+            else:
+                for i in range(len(shifts)):
+                    shifts[i][0]["Electron"] = events.Electron
+        else:
+            for i in range(len(shifts)):
+                shifts[i][0]["Electron"] = events.Electron
+
+        if "taus" in objcorr_config:
             if run == "2":
                 # apply energy corrections to taus (only to MC)
-                apply_tau_energy_scale_corrections(events, year)
-    if "met" in objcorr_config:
-        # apply MET phi modulation corrections
-        apply_met_phi_corrections(events, year)
+                shifts = apply_tau_energy_scale_corrections(
+                    events,
+                    year=year,
+                    shifts=shifts,
+                    corrections_config=workflow_config.corrections_config,
+                )
+        else:
+            for i in range(len(shifts)):
+                shifts[i][0]["Tau"] = events.Tau
+
+        if "met" in objcorr_config:
+            # apply MET phi modulation corrections
+            shifts = apply_met_phi_corrections(events, year, shifts)
+        else:
+            met_key = "MET" if run == "2" else "PuppiMET"
+            for i in range(len(shifts)):
+                shifts[i][0][met_key] = events[met_key]
+
+        # apply jet veto
+        if "jets_veto" in objcorr_config:
+            event_veto = jetvetomap(events, year)
+            vetoed_events = events[~event_veto]
+            for collections, _ in shifts:
+                for key in collections:
+                    collections[key] = collections[key][~event_veto]
+        else:
+            vetoed_events = events
+
+    return vetoed_events, shifts
 
 
 def weight_manager(
@@ -174,6 +221,7 @@ def weight_manager(
                     dataset=dataset,
                     fit=False,
                     one_dim=False,
+                    workflow=workflow,
                 )
 
         if "electron" in weights_config:
