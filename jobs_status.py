@@ -391,14 +391,19 @@ def update_input_filesets_for_group(
             continue
 
         nfiles = json.loads(args_json.read_text())["nfiles"]
-        root_files_list = divide_list(root_files, nfiles)
+        metadata = all_filesets[dataset].get("metadata", {})
+        root_files_list = divide_list(list(root_files["files"].keys()), nfiles)
 
         partition_dataset = {
             i
-            + 1: {(f"{dataset}_{i+1}" if len(root_files_list) > 1 else dataset): chunk}
+            + 1: {
+                f"{dataset}_{i+1}" if len(root_files_list) > 1 else dataset: {
+                    "files": {filename: "Events" for filename in chunk},
+                    "metadata": metadata,
+                }
+            }
             for i, chunk in enumerate(root_files_list)
         }
-
         partition_file = job_dir / dataset / "partitions.json"
         with open(partition_file, "w") as json_file:
             json.dump(partition_dataset, json_file, indent=4)
