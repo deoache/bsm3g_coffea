@@ -154,10 +154,15 @@ class BaseProcessor(processor.ProcessorABC):
                     output["metadata"][category].update(
                         {"weighted_final_nevents": weighted_final_nevents}
                     )
-                # get analysis variables and fill histograms
+
+                # get analysis variables
                 variables_map = {}
+                layout_axes = self.histogram_config.layout.values()
                 for variable, axis in self.histogram_config.axes.items():
-                    variables_map[variable] = eval(axis.expression)[category_mask]
+                    if variable in ak.flatten(layout_axes):
+                        variables_map[variable] = eval(axis.expression)[category_mask]
+
+                # fill histograms
                 fill_histograms(
                     histogram_config=self.histogram_config,
                     weights_container=weights_container,
