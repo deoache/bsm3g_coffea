@@ -13,13 +13,15 @@ def main(args):
         partition_fileset = json.load(f)
     # Configure the Runner using coffea 2024+ API
     futures_run = processor.Runner(
-        executor=processor.FuturesExecutor(workers=args.workers, compression=None, retries=6),
+        executor=processor.FuturesExecutor(
+            workers=args.workers, compression=None, retries=6
+        ),
         schema=NanoAODSchema,
         chunksize=100000,
         savemetrics=False,
         xrootdtimeout=120,
         align_clusters=True,
-        skipbadfiles=True
+        skipbadfiles=False,
     )
     # Execute processing job using the Runner instance
     out = futures_run(
