@@ -110,6 +110,13 @@ def parse_args():
         default="4000",
         help="Requested memory (in MB) for the condor job",
     )
+    parser.add_argument(
+        "-l",
+        "--label",
+        type=str,
+        default="",
+        help="output directory label",
+    )
     return parser.parse_args()
 
 
@@ -472,27 +479,29 @@ def resubmit_jobs(job_dir, jobnum_missing, datasets_with_missing_jobs, workflow,
 def main():
     args = parse_args()
 
+    # Directory setup
+    base_dir = Path.cwd()
+    output_dir = Path(make_output_directory(args))
+    condor_dir = base_dir / "condor"
+    workflow_dir = f"{args.workflow}/{args.label}" if args.label else args.workflow
+    job_dir = condor_dir / workflow_dir / args.year
+    log_dir = condor_dir / "logs" / workflow_dir / args.year
+    fileset_dir = base_dir / "analysis" / "filesets"
+
     # Optional full reset
     if args.reset:
         print("------------------------------------------------------------")
-        print("RESET REQUESTED — REMOVING ALL JOB ARTIFACTS AND RESTARTING")
+        print("RESET REQUESTED")
         print("------------------------------------------------------------")
 
+        subprocess.run(["rm", "-rf", job_dir], check=False)
+        subprocess.run(["rm", "-rf", log_dir], check=False)
         subprocess.run(
-            ["rm", "-rf", f"condor/{args.workflow}/{args.year}"], check=False
+            ["rm", "-rf", fileset_dir / f"{args.year}_sites.yaml"],
+            check=False,
         )
         subprocess.run(
-            ["rm", "-rf", f"condor/logs/{args.workflow}/{args.year}"], check=False
-        )
-        subprocess.run(
-            ["rm", "-rf", f"analysis/filesets/{args.year}_sites.yaml"], check=False
-        )
-        subprocess.run(
-            [
-                "rm",
-                "-rf",
-                f"analysis/filesets/fileset_{args.year}_NANO_lxplus.json",
-            ],
+            ["rm", "-rf", fileset_dir / f"fileset_{args.year}_NANO_lxplus.json"],
             check=False,
         )
 
@@ -510,18 +519,13 @@ def main():
         ]
         if args.eos:
             reset_cmd.append("--eos")
+        if args.label:
+            reset_cmd.append("-l")
+            reset_cmd.append(args.label)
 
         print("Re-running full workflow via runner.py...")
         subprocess.run(reset_cmd, check=True)
         print("Reset complete.\n")
-
-    # Directory setup
-    output_dir = Path(make_output_directory(args))
-    base_dir = Path.cwd()
-    condor_dir = base_dir / "condor"
-    job_dir = condor_dir / args.workflow / args.year
-    log_dir = condor_dir / "logs" / args.workflow / args.year
-    fileset_dir = base_dir / "analysis" / "filesets"
 
     # Discover job state
     jobnum, jobnum_done, error_files = get_jobs_info(
@@ -548,7 +552,6 @@ def main():
         print("You may want to inspect other error modes or resubmit directly.\n")
     else:
         # Group datasets by identical failing-site sets
-        groups = group_datasets_by_sites(dataset_sites)
         if args.single_fetch:
             all_sites = set().union(*dataset_sites.values())
             all_datasets = sorted(dataset_sites.keys())
