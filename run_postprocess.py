@@ -12,7 +12,11 @@ from collections import defaultdict
 from coffea.util import save, load
 from coffea.processor import accumulate
 from analysis.utils import make_output_directory
-from analysis.filesets.utils import get_dataset_config, get_process_maps
+from analysis.filesets.utils import (
+    get_dataset_config,
+    get_process_maps,
+    get_datasets_map,
+)
 from analysis.workflows.config import WorkflowConfigBuilder
 from analysis.postprocess.coffea_plotter import CoffeaPlotter
 from analysis.postprocess.coffea_postprocessor import get_results_report
@@ -102,6 +106,17 @@ def parse_arguments():
     parser.add_argument(
         "--eos", action="store_true", help="Enable reading outputs from /eos"
     )
+    parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Enable saving of sample/process sample histograms",
+    )
+    parser.add_argument(
+        "--report", action="store_true", help="Enable results report"
+    )
+    parser.add_argument(
+        "--kfactor", action="store_true", help="Enable k factor addition to xsec"
+    )
     return parser.parse_args()
 
 
@@ -182,7 +197,7 @@ if __name__ == "__main__":
         # ---------------------------------------------------
         # accumulate outputs by sample
         # ---------------------------------------------------
-        print_header("Accumulating outputs by sample")
+        print_header("Grouping outputs by sample")
         outputs = {}
         for sample, coffea_files in grouped_outputs.items():
             logging.info(f"Processing {sample}")
@@ -208,6 +223,16 @@ if __name__ == "__main__":
         scaled_histograms = {}
         scaled_cutflows = {}
         dataset_config = get_dataset_config(args.year)
+
+        kfactors = {
+            dataset: (
+                dataset_config[dataset]["kfactor"]
+                if "kfactor" in dataset_config[dataset]
+                else None
+            )
+            for dataset in dataset_config
+        }
+
         for sample in outputs:
 
             scaled_histograms[sample] = {}
@@ -215,6 +240,10 @@ if __name__ == "__main__":
 
             # compute weight
             xsec = dataset_config[sample]["xsec"]
+            if args.kfactor:
+                kfactor = kfactors[sample]
+                if kfactor:
+                    xsec = xsec * kfactor
             sumw = outputs[sample]["metadata"]["sumw"]
 
             weight = 1
@@ -222,10 +251,16 @@ if __name__ == "__main__":
                 weight = (luminosities[args.year] * xsec) / sumw
 
             # scale histograms
-            logging.info(f"{sample} xsec [pb]: {xsec} sumw: {sumw} weight: {weight}")
+            report_str = f"{sample} xsec [pb]: {xsec} sumw: {sumw} weight: {weight}"
+            if args.kfactor:
+                report_str += f" k factor: {kfactors[sample]}"
+            logging.info(report_str)
             histograms_to_scale = outputs[sample]["histograms"]
             for entry in histograms_to_scale:
                 scaled_histograms[sample][entry] = histograms_to_scale[entry] * weight
+
+            if args.save:
+                save(scaled_histograms[sample], f"{output_dir}/{sample}.coffea")
 
             # scale cutflow
             for category in categories:
@@ -237,9 +272,31 @@ if __name__ == "__main__":
                         scaled_cutflows[sample][category][cut] = nevents * weight
 
         # ---------------------------------------------------
+        # group histograms by key
+        # ---------------------------------------------------
+        if args.save:
+            print_header("Grouping histograms by key")
+            dataset_map = get_datasets_map(args.year)
+
+            scale_histograms_by_key = {}
+            for dataset_key in dataset_map:
+                logging.info(f"Processing {dataset_key}")
+                scale_histograms_by_key[dataset_key] = []
+                for sample in scaled_histograms:
+                    if sample in dataset_map[dataset_key]:
+                        scale_histograms_by_key[dataset_key].append(
+                            scaled_histograms[sample]
+                        )
+
+                save(
+                    accumulate(scale_histograms_by_key[dataset_key]),
+                    f"{output_dir}/{dataset_key}.coffea",
+                )
+
+        # ---------------------------------------------------
         # group histograms and cutflow by process
         # ---------------------------------------------------
-        print_header("Accumulating histograms by process")
+        print_header("Grouping histograms by process")
         processed_histograms = {}
         processed_cutflows = {}
         for process, samples in process_samples_map.items():
@@ -272,6 +329,8 @@ if __name__ == "__main__":
                                     scaled_cutflows[sample][category],
                                 ]
                             )
+            if args.save:
+                save(processed_histograms[process], f"{output_dir}/{process}.coffea")
 
         save(
             processed_histograms,
@@ -326,31 +385,32 @@ if __name__ == "__main__":
             logging.info("\n")
 
             if not "eff" in args.workflow:
-                print_header(f"Results")
-                results_df = get_results_report(
-                    processed_histograms,
-                    workflow_config,
-                    category,
-                    columns_to_drop,
-                    args.blind,
-                )
-                logging.info(
-                    results_df.map(lambda x: f"{x:.5f}" if pd.notnull(x) else "")
-                )
-                logging.info("\n")
-                results_df.to_csv(f"{category_dir}/results_{category}.csv")
+                if args.report:
+                    print_header(f"Results report")
+                    results_df = get_results_report(
+                        processed_histograms,
+                        workflow_config,
+                        category,
+                        columns_to_drop,
+                        args.blind,
+                    )
+                    logging.info(
+                        results_df.map(lambda x: f"{x:.5f}" if pd.notnull(x) else "")
+                    )
+                    logging.info("\n")
+                    results_df.to_csv(f"{category_dir}/results_{category}.csv")
 
-                if not args.blind:
-                    latex_table_asymmetric = df_to_latex_asymmetric(results_df)
-                    with open(
-                        category_dir / f"results_{category}_asymmetric.txt", "w"
-                    ) as f:
-                        f.write(latex_table_asymmetric)
-                    latex_table_average = df_to_latex_average(results_df)
-                    with open(
-                        category_dir / f"results_{category}_average.txt", "w"
-                    ) as f:
-                        f.write(latex_table_average)
+                    if not args.blind:
+                        latex_table_asymmetric = df_to_latex_asymmetric(results_df)
+                        with open(
+                            category_dir / f"results_{category}_asymmetric.txt", "w"
+                        ) as f:
+                            f.write(latex_table_asymmetric)
+                        latex_table_average = df_to_latex_average(results_df)
+                        with open(
+                            category_dir / f"results_{category}_average.txt", "w"
+                        ) as f:
+                            f.write(latex_table_average)
 
     if args.year in ["2016", "2022", "2023"]:
         if args.postprocess:
@@ -414,43 +474,48 @@ if __name__ == "__main__":
                 combined_cutflow.map(lambda x: f"{x:.2f}" if pd.notnull(x) else "")
             )
             if not "eff" in args.workflow:
-                # load and combine results tables
-                results_pre = pd.read_csv(
-                    output_dir.parent
-                    / f"{args.year}pre{identifier}"
-                    / category
-                    / f"results_{category}.csv",
-                    index_col=0,
-                )
-                results_post = pd.read_csv(
-                    output_dir.parent
-                    / f"{args.year}post{identifier}"
-                    / category
-                    / f"results_{category}.csv",
-                    index_col=0,
-                )
-                combined_results = combine_event_tables(
-                    results_pre, results_post, args.blind
-                )
+                if args.report:
+                    # load and combine results tables
+                    results_pre = pd.read_csv(
+                        output_dir.parent
+                        / f"{args.year}pre{identifier}"
+                        / category
+                        / f"results_{category}.csv",
+                        index_col=0,
+                    )
+                    results_post = pd.read_csv(
+                        output_dir.parent
+                        / f"{args.year}post{identifier}"
+                        / category
+                        / f"results_{category}.csv",
+                        index_col=0,
+                    )
+                    combined_results = combine_event_tables(
+                        results_pre, results_post, args.blind
+                    )
 
-                print_header(f"Results")
-                logging.info(
-                    combined_results.map(lambda x: f"{x:.5f}" if pd.notnull(x) else "")
-                )
-                logging.info("\n")
-                combined_results.to_csv(category_dir / f"results_{category}.csv")
-                if not args.blind:
-                    # save latex table
-                    latex_table_asymmetric = df_to_latex_asymmetric(combined_results)
-                    with open(
-                        category_dir / f"results_{category}_asymmetric.txt", "w"
-                    ) as f:
-                        f.write(latex_table_asymmetric)
-                    latex_table_average = df_to_latex_average(combined_results)
-                    with open(
-                        category_dir / f"results_{category}_average.txt", "w"
-                    ) as f:
-                        f.write(latex_table_average)
+                    print_header(f"Results")
+                    logging.info(
+                        combined_results.map(
+                            lambda x: f"{x:.5f}" if pd.notnull(x) else ""
+                        )
+                    )
+                    logging.info("\n")
+                    combined_results.to_csv(category_dir / f"results_{category}.csv")
+                    if not args.blind:
+                        # save latex table
+                        latex_table_asymmetric = df_to_latex_asymmetric(
+                            combined_results
+                        )
+                        with open(
+                            category_dir / f"results_{category}_asymmetric.txt", "w"
+                        ) as f:
+                            f.write(latex_table_asymmetric)
+                        latex_table_average = df_to_latex_average(combined_results)
+                        with open(
+                            category_dir / f"results_{category}_average.txt", "w"
+                        ) as f:
+                            f.write(latex_table_average)
 
     if args.postprocess:
         if args.workflow in ["1b1mu", "1b1e", "2b1e", "2b1mu", "1b1mu1e", "1b1e1mu"]:
