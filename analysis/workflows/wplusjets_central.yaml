@@ -75,16 +75,6 @@ object_selection:
     cuts:
       - (objects['dimuons'].p4.mass > 60) & (objects['dimuons'].p4.mass < 120)
       - objects['dimuons'].l1.charge * objects['dimuons'].l2.charge < 0
-  dijets:
-    field: select_dijets
-    cuts:
-      - np.abs(objects['dijets'].j1.eta - objects['dijets'].j2.eta) > 3.8
-      - objects['dijets'].j1.eta * objects['dijets'].j2.eta < 0
-      - objects['dijets'].p4.mass > 500
-  max_dijet_mass:
-    field: select_max_mass_dijet
-  max_dijets_mass_eta:
-    field: select_max_mass_dijet_eta
 event_selection:
   hlt_paths:
     muon:
@@ -104,9 +94,6 @@ event_selection:
     electron_veto: ak.num(objects['electrons']) == 0
     tau_veto: ak.num(objects['taus']) == 0
     bjet_veto: ak.num(objects['bjets']) == 0
-    atleast_one_jet: ak.num(objects['jets']) > 0
-    atleast_two_jets: ak.num(objects['jets']) > 1
-    atleast_one_dijet: ak.num(objects['dijets']) > 0
   categories:
     central:
       - goodvertex
@@ -123,30 +110,12 @@ event_selection:
       - electron_veto
       - tau_veto
       - bjet_veto
-    vbf:
-      - goodvertex
-      - lumi
-      - trigger
-      - trigger_match
-      - metfilters
-      - dy_stitching
-      - w_stitching
-      - met_250
-      - hemcleaning
-      - one_muon
-      - muon_veto
-      - electron_veto
-      - tau_veto
-      - bjet_veto
-      - atleast_two_jets
-      - atleast_one_dijet
 corrections:
   objects:
     - jets
     - muons
     - taus
     - met
-    - jets_veto
   apply_obj_syst: false
   event_weights:
     genWeight: true
@@ -155,6 +124,7 @@ corrections:
     lhepdfWeight: false
     lhescaleWeight: false
     partonshowerWeight: true
+    ISRWeight: true
     pujetid:
       - id: tight
     btagging:
@@ -174,6 +144,16 @@ histogram_config:
   add_syst_axis: true
   add_weight: true
   axes:
+    jet_multiplicity:
+      type: IntCategory
+      categories:
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
+      label: Jet multiplicity
+      expression: ak.num(objects['jets'])
     vertex_multiplicity:
       type: Integer
       start: 0
@@ -209,84 +189,6 @@ histogram_config:
       stop: 3.14159
       label: $\phi(\mu)$
       expression: objects['muons'].phi
-    jet_pt:
-      type: Variable
-      edges:
-        - 20
-        - 60
-        - 90
-        - 120
-        - 150
-        - 180
-        - 210
-        - 240
-        - 300
-        - 500
-      label: $p_T(j)$ [GeV]
-      expression: objects['jets'].pt
-    jet_eta:
-      type: Regular
-      bins: 50
-      start: -4.7
-      stop: 4.7
-      label: $\eta(j)$
-      expression: objects['jets'].eta
-    jet_phi:
-      type: Regular
-      bins: 50
-      start: -3.14159
-      stop: 3.14159
-      label: $\phi(j)$
-      expression: objects['jets'].phi
-    jet_multiplicity:
-      type: IntCategory
-      categories:
-        - 0
-        - 1
-        - 2
-        - 3
-        - 4
-        - 5
-        - 6
-        - 7
-        - 8
-        - 9
-        - 10
-        - 11
-        - 12
-        - 13
-        - 14
-        - 15
-      label: Jet multiplicity
-      expression: ak.num(objects['jets'])
-    dijet_mass:
-      type: Variable
-      edges:
-        - 500
-        - 600
-        - 800
-        - 1000
-        - 1200
-        - 1400
-        - 1600
-        - 1800
-        - 2000
-        - 2200
-        - 2400
-        - 2600
-        - 2800
-        - 3200
-        - 3800
-        - 5000
-      label: Largest $m(jj)$ [GeV]
-      expression: objects['max_dijet_mass']
-    dijet_eta:
-      type: Regular
-      bins: 50
-      start: 0
-      stop: 10
-      label: $|\Delta\eta(jj)|$
-      expression: objects['max_dijets_mass_eta']
     met_pt:
       type: Variable
       edges:
@@ -313,6 +215,21 @@ histogram_config:
       stop: 3.14159
       label: $\phi(p_T^{miss})$
       expression: objects['met'].phi
+    original_met_pt:
+      type: Variable
+      edges:
+        - 0
+        - 50
+        - 100
+        - 150
+        - 200
+        - 250
+        - 300
+        - 400
+        - 500
+        - 1000
+      label: Corrected L1 $p_T^{miss}$ [GeV]
+      expression: events.MET.pt
     transverse_mass:
       type: Regular
       bins: 8
@@ -322,21 +239,18 @@ histogram_config:
       expression: objects['muons'].transverse_mass
   layout:
     isr:
-      - transverse_mass
       - jet_multiplicity
+      - met_pt
+    transverse_mass:
+      - transverse_mass
     vertex_multiplicity:
       - vertex_multiplicity
     muons:
       - muon_pt
       - muon_eta
       - muon_phi
-    jets:
-      - jet_pt
-      - jet_eta
-      - jet_phi
-    dijets:
-      - dijet_mass
-      - dijet_eta
     met:
       - met_pt
       - met_phi
+    met_original:
+      - original_met_pt

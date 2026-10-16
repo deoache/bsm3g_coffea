@@ -1,0 +1,359 @@
+datasets:
+  data: 
+    - muon
+  mc:
+    - dy_inclusive
+    - dy_ht
+    - singletop
+    - tt
+    - wjets_ht
+    - wjets_inclusive
+    - diboson
+    - higgs
+object_selection:
+  muons:
+    field: events.Muon
+    cuts:
+      - events.Muon.pt > 30
+      - np.abs(events.Muon.eta) < 2.1
+      - working_points.muons_id(events, 'tight')
+      - working_points.muons_iso(events, 'tight')
+  veto_muons:
+    field: events.Muon
+    cuts:
+      - events.Muon.pt > 3
+      - events.Muon.pt < 30
+      - np.abs(events.Muon.eta) < 2.1
+      - working_points.muons_id(events, 'tight')
+      - working_points.muons_iso(events, 'tight')
+  electrons:
+    field: events.Electron
+    cuts:
+      - events.Electron.pt > 5
+      - np.abs(events.Electron.eta) < 2.1
+      - working_points.electrons_id(events, 'wp90iso')
+      - delta_r_mask(events.Electron, objects['muons'], 0.4)
+  taus:
+    field: events.Tau
+    cuts:
+      - events.Tau.pt > 20
+      - np.abs(events.Tau.eta) < 2.3
+      - np.abs(events.Tau.dz) < 0.2
+      - working_points.taus_vs_jet(events, 'loose')
+      - working_points.taus_vs_ele(events, 'vvloose')
+      - working_points.taus_vs_mu(events, 'loose')
+      - working_points.taus_decaymode(events, '13')
+      - delta_r_mask(events.Tau, objects['electrons'], 0.3)
+      - delta_r_mask(events.Tau, objects['muons'], 0.3)
+  jets:
+    field: events.Jet
+    cuts:
+      - events.Jet.pt > 30
+      - np.abs(events.Jet.eta) < 4.7
+      - working_points.jets_id(events, year, 'tightlepveto')
+      - working_points.jets_pileup_id(events, 'tight', year)
+      - delta_r_mask(events.Jet, objects['electrons'], 0.4)
+      - delta_r_mask(events.Jet, objects['muons'], 0.4)
+      - delta_r_mask(events.Jet, objects['taus'], 0.4)
+  bjets:
+    field: events.Jet
+    cuts:
+      - events.Jet.pt > 30
+      - np.abs(events.Jet.eta) < 2.4
+      - working_points.jets_id(events, year, 'tightlepveto')
+      - working_points.jets_btagging(events, 'medium', year)
+      - delta_r_mask(events.Jet, objects['electrons'], 0.4)
+      - delta_r_mask(events.Jet, objects['muons'], 0.4)
+      - delta_r_mask(events.Jet, objects['taus'], 0.4)
+  met:
+    field: select_ztojets_met
+  dimuons:
+    field: select_dimuons
+    cuts:
+      - (objects['dimuons'].p4.mass > 60) & (objects['dimuons'].p4.mass < 120)
+      - objects['dimuons'].l1.charge * objects['dimuons'].l2.charge < 0
+  dijets:
+    field: select_dijets
+    cuts:
+      - np.abs(objects['dijets'].j1.eta - objects['dijets'].j2.eta) > 3.8
+      - objects['dijets'].j1.eta * objects['dijets'].j2.eta < 0
+      - objects['dijets'].p4.mass > 500
+  max_dijet_mass:
+    field: select_max_mass_dijet
+  max_dijets_mass_eta:
+    field: select_max_mass_dijet_eta
+event_selection:
+  hlt_paths:
+    muon:
+      - SingleMu
+  selections:
+    goodvertex: events.PV.npvsGood > 0
+    lumi: get_lumi_mask(events, year)
+    trigger: get_trigger_mask(events, hlt_paths, dataset, year)
+    trigger_match: get_trigger_match_mask(events, hlt_paths, year, events.Muon)
+    metfilters: get_metfilters_mask(events, year)
+    hemcleaning: get_hemcleaning_mask(events, year)
+    dy_stitching: get_stitching_mask(events, dataset, 'DYJetsToLL_inclusive', 70)
+    w_stitching: get_stitching_mask(events, dataset, 'WJetsToLNu_inclusive', 100)
+    met_250: objects['met'].pt > 250
+    two_muons: ak.num(objects['muons']) == 2
+    one_dimuon: ak.num(objects['dimuons']) == 1
+    muon_veto: ak.num(objects['veto_muons']) == 0
+    electron_veto: ak.num(objects['electrons']) == 0
+    tau_veto: ak.num(objects['taus']) == 0
+    bjet_veto: ak.num(objects['bjets']) == 0
+    atleast_one_jet: ak.num(objects['jets']) > 0
+    atleast_two_jets: ak.num(objects['jets']) > 1
+    atleast_one_dijet: ak.num(objects['dijets']) > 0
+  categories:
+    vbf:
+      - goodvertex
+      - lumi
+      - trigger
+      - trigger_match
+      - metfilters
+      - dy_stitching
+      - w_stitching
+      - met_250
+      - hemcleaning
+      - two_muons
+      - one_dimuon
+      - muon_veto
+      - electron_veto
+      - tau_veto
+      - bjet_veto
+      - atleast_two_jets
+      - atleast_one_dijet
+corrections:
+  objects:
+    - jets
+    - muons
+    - met
+    - jets_veto
+  apply_obj_syst: true
+  event_weights:
+    genWeight: true
+    pileupWeight: true
+    l1prefiring: true
+    lhepdfWeight: false
+    lhescaleWeight: false
+    partonshowerWeight: true
+    ISRWeight: true
+    pujetid:
+      - id: tight
+    btagging: 
+      - id: medium
+      - full_run: false
+      - bc: true
+      - light: true
+    electron: false
+    muon:
+      - id: tight
+      - iso: tight
+      - reco: true
+      - trigger: true
+    tau: false
+histogram_config:
+  flow: true
+  add_syst_axis: true
+  add_weight: true
+  axes:
+    vertex_multiplicity:
+      type: Integer
+      start: 0
+      stop: 60
+      label: vertex multiplicity
+      expression: events.PV.npvsGood
+    muon_pt:
+      type: Variable
+      edges:
+        - 30
+        - 60
+        - 90
+        - 120
+        - 150
+        - 180
+        - 210
+        - 240
+        - 300
+        - 500
+      label: $p_T(\mu)$ [GeV]
+      expression: objects['muons'].pt
+    muon_eta:
+      type: Regular
+      bins: 50
+      start: -2.4
+      stop: 2.4
+      label: $\eta(\mu)$
+      expression: objects['muons'].eta
+    muon_phi:
+      type: Regular
+      bins: 50
+      start: -3.14159
+      stop: 3.14159
+      label: $\phi(\mu)$
+      expression: objects['muons'].phi
+    dimuon_mass:
+      type: Regular
+      bins: 24
+      start: 60
+      stop: 120
+      label: $m(\mu \mu)$ [GeV]
+      expression: objects['dimuons'].p4.mass
+    dimuon_pt:
+      type: Variable
+      edges:
+        - 0
+        - 20
+        - 40
+        - 60
+        - 80
+        - 100
+        - 120
+        - 140
+        - 160
+        - 180
+        - 200
+        - 225
+        - 250
+        - 275
+        - 300
+        - 325
+        - 350
+        - 375
+        - 400
+        - 450
+        - 500
+        - 550
+        - 600
+        - 700
+        - 800
+        - 1000
+      label: $p_T(\mu \mu)$ [GeV]
+      expression: objects['dimuons'].p4.pt
+    jet_pt:
+      type: Variable
+      edges:
+        - 20
+        - 60
+        - 90
+        - 120
+        - 150
+        - 180
+        - 210
+        - 240
+        - 300
+        - 500
+      label: $p_T(j)$ [GeV]
+      expression: objects['jets'].pt
+    jet_eta:
+      type: Regular
+      bins: 50
+      start: -4.7
+      stop: 4.7
+      label: $\eta(j)$
+      expression: objects['jets'].eta
+    jet_phi:
+      type: Regular
+      bins: 50
+      start: -3.14159
+      stop: 3.14159
+      label: $\phi(j)$
+      expression: objects['jets'].phi
+    jet_multiplicity:
+      type: IntCategory
+      categories:
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+        - 11
+        - 12
+        - 13
+        - 14
+        - 15
+      label: Jet multiplicity
+      expression: ak.num(objects['jets'])
+    dijet_mass:
+      type: Variable
+      edges:
+        - 500
+        - 600
+        - 800
+        - 1000
+        - 1200
+        - 1400
+        - 1600
+        - 1800
+        - 2000
+        - 2200
+        - 2400
+        - 2600
+        - 2800
+        - 3200
+        - 3800
+        - 5000
+      label: Largest $m(jj)$ [GeV]
+      expression: objects['max_dijet_mass']
+    dijet_eta:
+      type: Regular
+      bins: 50
+      start: 0
+      stop: 10
+      label: $|\Delta\eta(jj)|$
+      expression: objects['max_dijets_mass_eta']
+    met_pt:
+      type: Variable
+      edges:
+        - 250
+        - 260
+        - 270
+        - 280
+        - 290
+        - 300
+        - 320
+        - 340
+        - 360
+        - 380
+        - 400
+        - 450
+        - 500
+        - 1000
+      label: $p_T^{miss}$ [GeV]
+      expression: objects['met'].pt
+    met_phi:
+      type: Regular
+      bins: 50
+      start: -3.14159
+      stop: 3.14159
+      label: $\phi(p_T^{miss})$
+      expression: objects['met'].phi
+  layout:
+    vertex_multiplicity:
+      - vertex_multiplicity
+    isr:
+      - dimuon_pt
+      - jet_multiplicity
+    muons:
+      - muon_pt
+      - muon_eta
+      - muon_phi
+    dimuons:
+      - dimuon_mass
+    jets:
+      - jet_pt
+      - jet_eta
+      - jet_phi
+    dijets:
+      - dijet_mass
+      - dijet_eta
+    met:
+      - met_pt
+      - met_phi
