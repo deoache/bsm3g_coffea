@@ -1,0 +1,117 @@
+datasets:
+  mc:
+    - dy_inclusive
+    - dy_ht
+object_selection:
+  muons:
+    field: events.Muon
+    cuts:
+      - events.Muon.pt > 10
+      - np.abs(events.Muon.eta) < 2.4
+      - working_points.muons_iso(events, 'tight')
+      - working_points.muons_id(events, 'tight')
+  electrons:
+    field: events.Electron
+    cuts:
+      - events.Electron.pt > 10
+      - (np.abs(events.Electron.eta) < 2.4) & ((np.abs(events.Electron.eta) < 1.44) | (np.abs(events.Electron.eta) > 1.57))
+      - working_points.electrons_id(events, 'wp80iso')
+      - delta_r_mask(events.Electron, objects['muons'], 0.4)
+  taus:
+    field: events.Tau
+    cuts:
+      - events.Tau.pt > 20
+      - np.abs(events.Tau.eta) < 2.3
+      - np.abs(events.Tau.dz) < 0.2
+      - working_points.taus_vs_jet(events, 'loose')
+      - working_points.taus_vs_ele(events, 'vvloose')
+      - working_points.taus_vs_mu(events, 'loose')
+      - working_points.taus_decaymode(events, '13')
+      - delta_r_mask(events.Tau, objects['electrons'], 0.3)
+      - delta_r_mask(events.Tau, objects['muons'], 0.3)
+  dimuons:
+    field: select_dimuons
+    cuts:
+      - objects['dimuons'].l1.delta_r(objects['dimuons'].l2) > 0.3
+      - objects['dimuons'].l1.charge * objects['dimuons'].l2.charge < 0
+      - (objects['dimuons'].p4.mass > 60.0) & (objects['dimuons'].p4.mass < 120.0)
+  jets:
+    field: events.Jet
+    cuts:
+      - events.Jet.pt > 20
+      - np.abs(events.Jet.eta) < 2.5
+      - working_points.jets_id(events, year, 'tightlepveto')
+      - delta_r_mask(events.Jet, objects['muons'], 0.4)
+      - delta_r_mask(events.Jet, objects['electrons'], 0.4)
+  met:
+    field: select_met
+event_selection:
+  hlt_paths:
+    muon:
+      - SingleMu
+  selections:
+    trigger: get_trigger_mask(events, hlt_paths, dataset, year)
+    trigger_match: get_trigger_match_mask(events, hlt_paths, year, events.Muon)
+    lumi: get_lumi_mask(events, year)
+    goodvertex: events.PV.npvsGood > 0
+    two_muons: ak.num(objects['muons']) == 2
+    one_dimuon: ak.num(objects['dimuons']) == 1
+    leading_muon_pt: ak.firsts(objects['muons'].pt) > 30
+    subleading_muon_pt: ak.pad_none(objects['muons'], target=2)[:, 1].pt > 15
+    electron_veto: ak.num(objects['electrons']) == 0
+    tau_veto: ak.num(objects['taus']) == 0
+  categories:
+    base:
+      - goodvertex
+      - lumi
+      - trigger
+      - trigger_match
+      - two_muons
+      - leading_muon_pt
+      - subleading_muon_pt
+      - one_dimuon
+      - electron_veto
+      - tau_veto
+corrections:
+  objects:
+    - jets
+    - jets_veto
+    - muons
+    - electrons
+    - taus
+    - met
+  apply_obj_syst: false
+  event_weights:
+    genWeight: true
+    pileupWeight: true
+    l1prefiringWeight: false
+    lhepdfWeight: false
+    lhescaleWeight: false
+    partonshowerWeight: false
+    ISRWeight: false
+    muon:
+      - id: tight
+      - iso: tight
+      - reco: true
+      - trigger: true
+histogram_config:
+  flow: true
+  add_weight: true
+  add_syst_axis: true
+  axes:
+    dyjets_gen_ht:
+      type: Variable
+      edges:
+       - 40
+       - 70
+       - 100
+       - 400
+       - 800
+       - 1500
+       - 2500
+       - 3500
+      label: gen $\text{H}_{\text{T}}$ [GeV]
+      expression: np.zeros_like(events.PV.npvsGood) if not hasattr(events, "LHE") else events.LHE.HT
+  layout:
+    gen_ht:
+      - dyjets_gen_ht

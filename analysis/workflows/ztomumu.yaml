@@ -3,9 +3,11 @@ datasets:
     - muon
   mc:
     - dy_inclusive
+    - dy_ht
+    - wjets_inclusive
+    - wjets_ht
     - singletop
     - tt
-    - wjets_ht
     - diboson
 object_selection:
   muons:
@@ -58,6 +60,8 @@ event_selection:
     trigger: get_trigger_mask(events, hlt_paths, dataset, year)
     trigger_match: get_trigger_match_mask(events, hlt_paths, year, events.Muon)
     lumi: get_lumi_mask(events, year)
+    dy_stitching: get_stitching_mask(events, dataset, 'DYJetsToLL_inclusive', 40)
+    w_stitching: get_stitching_mask(events, dataset, 'WJetsToLNu_inclusive', 40)
     goodvertex: events.PV.npvsGood > 0
     two_muons: ak.num(objects['muons']) == 2
     one_dimuon: ak.num(objects['dimuons']) == 1
@@ -71,6 +75,8 @@ event_selection:
       - lumi
       - trigger
       - trigger_match
+      - dy_stitching
+      - w_stitching
       - two_muons
       - leading_muon_pt
       - subleading_muon_pt
@@ -89,10 +95,11 @@ corrections:
   event_weights:
     genWeight: true
     pileupWeight: true
-    l1prefiringWeight: true
+    l1prefiringWeight: false
     lhepdfWeight: false
     lhescaleWeight: false
-    partonshowerWeight: true
+    partonshowerWeight: false
+    ISRWeight: false
     muon:
       - id: tight
       - iso: tight
@@ -120,29 +127,17 @@ histogram_config:
       type: Variable
       edges:
         - 0
-        - 20
         - 40
-        - 60
         - 80
-        - 100
         - 120
-        - 140
         - 160
-        - 180
         - 200
-        - 225
         - 250
-        - 275
         - 300
-        - 325
         - 350
-        - 375
         - 400
-        - 450
         - 500
-        - 550
         - 600
-        - 700
         - 800
         - 1000
       label: $p_T(\mu\mu)$ [GeV]
