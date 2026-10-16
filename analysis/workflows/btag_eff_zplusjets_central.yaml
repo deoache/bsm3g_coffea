@@ -67,16 +67,6 @@ object_selection:
     cuts:
       - (objects['dimuons'].p4.mass > 60) & (objects['dimuons'].p4.mass < 120)
       - objects['dimuons'].l1.charge * objects['dimuons'].l2.charge < 0
-  dijets:
-    field: select_dijets
-    cuts:
-      - np.abs(objects['dijets'].j1.eta - objects['dijets'].j2.eta) > 3.8
-      - objects['dijets'].j1.eta * objects['dijets'].j2.eta < 0
-      - objects['dijets'].p4.mass > 500
-  max_dijet_mass:
-    field: select_max_mass_dijet
-  max_dijets_mass_eta:
-    field: select_max_mass_dijet_eta
 event_selection:
   hlt_paths:
     muon:
@@ -96,9 +86,6 @@ event_selection:
     muon_veto: ak.num(objects['veto_muons']) == 0
     electron_veto: ak.num(objects['electrons']) == 0
     tau_veto: ak.num(objects['taus']) == 0
-    atleast_one_jet: ak.num(objects['jets']) > 0
-    atleast_two_jets: ak.num(objects['jets']) > 1
-    atleast_one_dijet: ak.num(objects['dijets']) > 0
   categories:
     central:
       - goodvertex
@@ -115,30 +102,12 @@ event_selection:
       - muon_veto
       - electron_veto
       - tau_veto
-    vbf:
-      - goodvertex
-      - lumi
-      - trigger
-      - trigger_match
-      - metfilters
-      - dy_stitching
-      - w_stitching
-      - met_250
-      - hemcleaning
-      - two_muons
-      - one_dimuon
-      - muon_veto
-      - electron_veto
-      - tau_veto
-      - atleast_two_jets
-      - atleast_one_dijet
 corrections:
   objects:
     - jets
     - muons
-    - taus
+    - electrons
     - met
-    - jets_veto
   apply_obj_syst: false
   event_weights:
     genWeight: true
@@ -146,7 +115,7 @@ corrections:
     l1prefiring: true
     lhepdfWeight: false
     lhescaleWeight: false
-    partonshowerWeight: true
+    partonshowerWeight: false
     ISRWeight: false
     pujetid:
       - id: tight
