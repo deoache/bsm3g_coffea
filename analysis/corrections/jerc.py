@@ -99,12 +99,12 @@ def apply_jerc_corrections(
     dataset: str,
     shifts: dict,
     corrections_config: dict,
-    apply_jec=True,
-    apply_jer=False,
-    apply_junc=True,
+    apply_junc=False,
 ):
-    if hasattr(events, "genWeight"):
-        apply_jer = True
+    is_mc = hasattr(events, "genWeight")
+
+    apply_jec = True
+    apply_jer = is_mc
 
     era = get_dataset_era(dataset, year)
     run_key = "Run3" if year.startswith("202") else "Run2"
@@ -124,14 +124,12 @@ def apply_jerc_corrections(
         events["Jet", "pt_gen"] = ak.values_astype(
             ak.fill_none(jets.matched_gen.pt, 0), np.float32
         )
-    if run_key == "Run3":
-        events["Jet", "event_rho"] = (
-            ak.ones_like(jets.pt) * events.Rho.fixedGridRhoFastjetAll
-        )
-    elif run_key == "Run2":
-        events["Jet", "event_rho"] = ak.broadcast_arrays(
-            events.fixedGridRhoFastjetAll, jets.pt
-        )[0]
+    rho_branch = (
+        events.Rho.fixedGridRhoFastjetAll
+        if run_key == "Run3"
+        else events.fixedGridRhoFastjetAll
+    )
+    events["Jet", "event_rho"] = ak.ones_like(jets.pt) * rho_branch
 
     # set inputs for jec, jer and junc stack
     names = jec_names_and_sources(year)
@@ -166,7 +164,6 @@ def apply_jerc_corrections(
         jec_options.update(jec_input_options["junc"])
 
     # set jerc name map (I don't use JECStack.blank_name_map since it includes 'ptRaw' and 'massRaw' by default)
-
     jec_name_map = {
         "JetPt": "pt",
         "JetMass": "mass",
@@ -192,20 +189,31 @@ def apply_jerc_corrections(
         stack = JECStack(jec_options)
         jec_factory = CorrectedJetsFactory(jec_name_map, stack)
     else:
-        # create a separate factory for the data era
-        jec_inputs_data = {}
-        for opt in ["jec", "junc"]:
-            jec_inputs_data.update(
-                {name: jet_evaluator[name] for name in names[f"{opt}_names_data"][era]}
-            )
-        for src in names["junc_sources_data"][era]:
-            for key in jet_evaluator.keys():
-                if src in key:
-                    jec_inputs_data[key] = jet_evaluator[key]
-        jec_stack_data = JECStack(jec_inputs_data)
-        jec_factory = CorrectedJetsFactory(jec_name_map, jec_stack_data)
+        if apply_junc:
+            # create a separate factory for the data era
+            jec_inputs_data = {}
+            for opt in ["jec", "junc"]:
+                jec_inputs_data.update(
+                    {
+                        name: jet_evaluator[name]
+                        for name in names[f"{opt}_names_data"][era]
+                    }
+                )
+            for src in names["junc_sources_data"][era]:
+                for key in jet_evaluator.keys():
+                    if src in key:
+                        jec_inputs_data[key] = jet_evaluator[key]
+            jec_stack_data = JECStack(jec_inputs_data)
+            jec_factory = CorrectedJetsFactory(jec_name_map, jec_stack_data)
+        else:
+            # Create a data factory with nominal JEC corrections only.
+            jec_inputs_data = {
+                name: jet_evaluator[name] for name in names["jec_names_data"][era]
+            }
+            jec_stack_data = JECStack(jec_inputs_data)
+            jec_factory = CorrectedJetsFactory(jec_name_map, jec_stack_data)
 
-    # update Jet collection
+    # update Jet and MET collections
     events["Jet"] = jec_factory.build(events.Jet)
 
     met_key = "MET" if run_key == "Run2" else "PuppiMET"

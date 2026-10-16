@@ -40,6 +40,7 @@ def object_corrector_manager(events, year, run, dataset, workflow_config):
                 dataset=dataset,
                 shifts=shifts,
                 corrections_config=workflow_config.corrections_config,
+                apply_junc=False,
             )
         else:
             met_field_key = "MET" if year.startswith("201") else "PuppiMET"
