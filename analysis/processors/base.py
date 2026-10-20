@@ -1,7 +1,7 @@
 import copy
+import warnings
 import numpy as np
 import awkward as ak
-import warnings
 from coffea import processor
 from coffea.analysis_tools import PackedSelection, Weights
 from analysis.workflows.config import WorkflowConfigBuilder
@@ -22,7 +22,7 @@ from analysis.selections import (
 
 
 def update(events, collections):
-    """Return a shallow copy of events array with some collections swapped out"""
+    """Return a copy of the events array with the specified collections replaced"""
     out = events
     for name, value in collections.items():
         out = ak.with_field(out, value, name)
@@ -43,22 +43,19 @@ class BaseProcessor(processor.ProcessorABC):
         self.histogram_config = self.workflow_config.histogram_config
         self.histograms = HistBuilder(self.workflow_config).build_histogram()
 
-    def add_cutflow(
-        self, events, output, objects, selection_manager, weight_manager, dataset
-    ):
-        sumw = ak.sum(events.genWeight) if hasattr(events, "genWeight") else len(events)
+    def add_cutflow(self, events, output, selection_manager):
         for category, category_cuts in self.workflow_config.event_selection[
             "categories"
         ].items():
-            output["metadata"].update({category: {"cutflow": {"initial": sumw}}})
+            output["metadata"].update({category: {"cutflow": {"initial": self.sumw}}})
             selections = []
             for cut_name in category_cuts:
                 selections.append(cut_name)
                 current_selection = selection_manager.all(*selections)
                 if ak.sum(current_selection) != 0:
                     sumw_cutflow = (
-                        ak.sum(events.genWeight[current_selection])
-                        if hasattr(events, "genWeight")
+                        ak.sum(self.genweight[current_selection])
+                        if self.is_mc
                         else len(events[current_selection])
                     )
                     output["metadata"][category]["cutflow"][cut_name] = sumw_cutflow
@@ -70,8 +67,15 @@ class BaseProcessor(processor.ProcessorABC):
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         np.seterr(divide="ignore", invalid="ignore")
 
+        # identify data and simulation
         self.is_mc = hasattr(events, "genWeight")
 
+        # compute sumw before jet veto for normalization
+        self.sumw = ak.sum(events.genWeight) if self.is_mc else len(events)
+        if self.is_mc:
+            self.genweight = events.genWeight
+
+        # apply object corrections, jet veto and prepare systematic variations
         vetoed_events, shifts = object_corrector_manager(
             events=events,
             year=self.year,
@@ -85,59 +89,44 @@ class BaseProcessor(processor.ProcessorABC):
         )
 
     def process_shift(self, events, shift_name):
+        # define variables required by workflow expressions evaluated with eval()
         year = self.year
-        is_mc = self.is_mc
         dataset = events.metadata["dataset"]
+        hlt_paths = self.workflow_config.event_selection["hlt_paths"]
 
-        # initialize output dictionary
+        # initialize output metadata
         output = {}
         output["metadata"] = {}
         if shift_name is None:
-            # save sum of weights before object_selection
-            sumw = ak.sum(events.genWeight) if is_mc else len(events)
-            output["metadata"].update({"sumw": sumw})
-            for category in self.workflow_config.event_selection["categories"]:
-                output["metadata"].update({category: {"cutflow": {"initial": sumw}}})
+            # store the initial sum of weights before object selection
+            output["metadata"].update({"sumw": self.sumw})
 
-        # ----------------------------------------------------------------------------------
         # object selection
-        # ----------------------------------------------------------------------------------
         object_selector = ObjectSelector(
-            self.workflow_config.object_selection, year, self.run
+            self.workflow_config.object_selection, self.year, self.run
         )
         objects = object_selector.select_objects(events)
-        # ----------------------------------------------------------------------------------
+
         # event selection
-        # ----------------------------------------------------------------------------------
-        # itinialize selection manager and add all selections from workflow
         selection_manager = PackedSelection()
         event_selection = self.workflow_config.event_selection
-        if "hlt_paths" in event_selection:
-            hlt_paths = event_selection["hlt_paths"]
-
         for selection, mask in event_selection["selections"].items():
             selection_manager.add(selection, eval(mask))
 
-        # add cutflow to metadata
-        self.add_cutflow(
-            events, output, objects, selection_manager, weight_manager, dataset
-        )
-
-        # -----------------------------------------------------------------------------------
-        # Histogram filling
-        # -----------------------------------------------------------------------------------
+        self.add_cutflow(events, output, selection_manager)
+        # histogram filling
         histograms = copy.deepcopy(self.histograms)
         for category, category_cuts in event_selection["categories"].items():
-            # get selection mask by category
             category_mask = selection_manager.all(*category_cuts)
             nevents_after = ak.sum(category_mask)
             if nevents_after > 0:
-                # get pruned events
+                # select events passing the category requirements
+                # add the selected object collections to events
                 pruned_ev = events[category_mask]
-                # add each selected object to 'pruned_ev' as a new field
                 for obj in objects:
                     pruned_ev[f"selected_{obj}"] = objects[obj][category_mask]
-                # get weights container
+
+                # compute event weights
                 weights_container = weight_manager(
                     pruned_ev=pruned_ev,
                     year=year,
@@ -149,20 +138,20 @@ class BaseProcessor(processor.ProcessorABC):
                     dataset=dataset,
                 )
                 if shift_name is None:
-                    # save number of events after selection to metadata
+                    # save weighted event yield after selection
                     weighted_final_nevents = ak.sum(weights_container.weight())
                     output["metadata"][category].update(
                         {"weighted_final_nevents": weighted_final_nevents}
                     )
 
-                # get analysis variables
+                # evaluate variables required by the histogram layout
                 variables_map = {}
                 layout_axes = self.histogram_config.layout.values()
                 for variable, axis in self.histogram_config.axes.items():
                     if variable in ak.flatten(layout_axes):
                         variables_map[variable] = eval(axis.expression)[category_mask]
 
-                # fill histograms
+                # fill histograms for the current category and systematic variation
                 fill_histograms(
                     histogram_config=self.histogram_config,
                     weights_container=weights_container,
@@ -170,10 +159,10 @@ class BaseProcessor(processor.ProcessorABC):
                     histograms=histograms,
                     shift_name=shift_name,
                     category=category,
-                    is_mc=is_mc,
+                    is_mc=self.is_mc,
                     flow=self.histogram_config.flow,
                 )
-        # define output dictionary accumulator
+
         output["histograms"] = histograms
         return output
 
