@@ -1,94 +1,118 @@
-EGamma0v1C:
+MuonEGRun2023Cv1:
+  era: C123
+  query: MuonEG/Run2023C-22Sep2023_v1-v1/NANOAOD
+  process: Data
+  key: muon_electron
+  xsec: None
+MuonEGRun2023Cv2:
+  era: C123
+  query: MuonEG/Run2023C-22Sep2023_v2-v1/NANOAOD
+  process: Data
+  key: muon_electron
+  xsec: None
+MuonEGRun2023Cv3:
+  era: C123
+  query: MuonEG/Run2023C-22Sep2023_v3-v1/NANOAOD
+  process: Data
+  key: muon_electron
+  xsec: None
+MuonEGRun2023Cv4:
+  era: C4
+  query: MuonEG/Run2023C-22Sep2023_v4-v1/NANOAOD
+  process: Data
+  key: muon_electron
+  xsec: None
+EGamma0Run2023Cv1:
   era: C123
   query: EGamma0/Run2023C-22Sep2023_v1-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGamma0v2C:
+EGamma0Run2023Cv2:
   era: C123
   query: EGamma0/Run2023C-22Sep2023_v2-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGamma0v3C:
+EGamma0Run2023Cv3:
   era: C123
   query: EGamma0/Run2023C-22Sep2023_v3-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGamma0v4C:
+EGamma0Run2023Cv4:
   era: C4
   query: EGamma0/Run2023C-22Sep2023_v4-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGamma1v1C:
+EGamma1Run2023Cv1:
   era: C123
   query: EGamma1/Run2023C-22Sep2023_v1-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGamma1v2C:
+EGamma1Run2023Cv2:
   era: C123
   query: EGamma1/Run2023C-22Sep2023_v2-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGamma1v3C:
+EGamma1Run2023Cv3:
   era: C123
   query: EGamma1/Run2023C-22Sep2023_v3-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGamma1v4C:
+EGamma1Run2023Cv4:
   era: C4
   query: EGamma1/Run2023C-22Sep2023_v4-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-Muon0v1C:
+Muon0Run2023Cv1:
   era: C123
   query: Muon0/Run2023C-22Sep2023_v1-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-Muon0v2C:
+Muon0Run2023Cv2:
   era: C123
   query: Muon0/Run2023C-22Sep2023_v2-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-Muon0v3C:
+Muon0Run2023Cv3:
   era: C123
   query: Muon0/Run2023C-22Sep2023_v3-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-Muon0v4C:
+Muon0Run2023Cv4:
   era: C4
   query: Muon0/Run2023C-22Sep2023_v4-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-Muon1v1C:
+Muon1Run2023Cv1:
   era: C123
   query: Muon1/Run2023C-22Sep2023_v1-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-Muon1v2C:
+Muon1Run2023Cv2:
   era: C123
   query: Muon1/Run2023C-22Sep2023_v2-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-Muon1v3C:
+Muon1Run2023Cv3:
   era: C123
   query: Muon1/Run2023C-22Sep2023_v3-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-Muon1v4C:
+Muon1Run2023Cv4:
   era: C4
   query: Muon1/Run2023C-22Sep2023_v4-v2/NANOAOD
   process: Data

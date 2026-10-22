@@ -1,46 +1,58 @@
-EGamma0v1D:
+MuonEGRun2023Dv1:
+  era: D
+  query: MuonEG/Run2023D-22Sep2023_v1-v1/NANOAOD
+  process: Data
+  key: muon_electron
+  xsec: None
+MuonEGRun2023Dv2:
+  era: D
+  query: MuonEG/Run2023D-22Sep2023_v2-v1/NANOAOD
+  process: Data
+  key: muon_electron
+  xsec: None
+EGamma0Run2023Dv1:
   era: D
   query: EGamma0/Run2023D-22Sep2023_v1-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGamma0v2D:
+EGamma0Run2023Dv2:
   era: D
   query: EGamma0/Run2023D-22Sep2023_v2-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGamma1v1D:
+EGamma1Run2023Dv1:
   era: D
   query: EGamma1/Run2023D-22Sep2023_v1-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGamma1v2D:
+EGamma1Run2023Dv2:
   era: D
   query: EGamma1/Run2023D-22Sep2023_v2-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-Muon0v1D:
+Muon0Run2023Dv1:
   era: D
   query: Muon0/Run2023D-22Sep2023_v1-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-Muon0v2D:
+Muon0Run2023Dv2:
   era: D
   query: Muon0/Run2023D-22Sep2023_v2-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-Muon1v1D:
+Muon1Run2023Dv1:
   era: D
   query: Muon1/Run2023D-22Sep2023_v1-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-Muon1v2D:
+Muon1Run2023Dv2:
   era: D
   query: Muon1/Run2023D-22Sep2023_v2-v1/NANOAOD
   process: Data
@@ -140,7 +152,7 @@ DYJetsToLL_4to50_HT40to70:
   era: MC
   query: DYto2L-4Jets_MLL-4to50_HT-40to70_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23BPixNanoAODv12-130X_mcRun3_2023_realistic_postBPix_v6-v2/NANOAODSIM
   process: DYJetsToLL
-  key: none
+  key: dy_ht
   xsec: 911.4
 DYJetsToLL_4to50_HT70to100:
   era: MC

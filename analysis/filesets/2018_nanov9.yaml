@@ -1,50 +1,98 @@
-SingleElectronA:
-  era: A
-  process: Data
-  key: electron
-  query: EGamma/Run2018A-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
-  xsec: null
-SingleElectronB:
-  era: B
-  process: Data
-  key: electron
-  query: EGamma/Run2018B-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
-  xsec: null
-SingleElectronC:
-  era: C
-  process: Data
-  key: electron
-  query: EGamma/Run2018C-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
-  xsec: null
-SingleElectronD:
-  era: D
-  process: Data
-  key: electron
-  query: EGamma/Run2018D-UL2018_MiniAODv2_NanoAODv9-v3/NANOAOD
-  xsec: null
-SingleMuonA:
+SingleMuonRun2018A:
   era: A
   process: Data
   key: muon
   query: SingleMuon/Run2018A-UL2018_MiniAODv2_NanoAODv9-v2/NANOAOD
   xsec: null
-SingleMuonB:
+EGammaRun2018A:
+  era: A
+  process: Data
+  key: electron
+  query: EGamma/Run2018A-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
+  xsec: null
+DoubleMuonRun2018A:
+  era: A
+  process: Data
+  key: double_muon
+  query: DoubleMuon/Run2018A-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
+  xsec: null
+MuonEGRun2018A:
+  era: A
+  process: Data
+  key: muon_electron
+  query: MuonEG/Run2018A-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
+  xsec: null
+SingleMuonRun2018B:
   era: B
   process: Data
   key: muon
   query: SingleMuon/Run2018B-UL2018_MiniAODv2_NanoAODv9-v2/NANOAOD
   xsec: null
-SingleMuonC:
+EGammaRun2018B:
+  era: B
+  process: Data
+  key: electron
+  query: EGamma/Run2018B-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
+  xsec: null
+DoubleMuonRun2018B:
+  era: B
+  process: Data
+  key: double_muon
+  query: DoubleMuon/Run2018B-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
+  xsec: null
+MuonEGRun2018B:
+  era: B
+  process: Data
+  key: muon_electron
+  query: MuonEG/Run2018B-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
+  xsec: null
+SingleMuonRun2018C:
   era: C
   process: Data
   key: muon
   query: SingleMuon/Run2018C-UL2018_MiniAODv2_NanoAODv9-v2/NANOAOD
   xsec: null
-SingleMuonD:
+EGammaRun2018C:
+  era: C
+  process: Data
+  key: electron
+  query: EGamma/Run2018C-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
+  xsec: null
+DoubleMuonRun2018C:
+  era: C
+  process: Data
+  key: double_muon
+  query: DoubleMuon/Run2018C-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
+  xsec: null
+MuonEGRun2018C:
+  era: C
+  process: Data
+  key: muon_electron
+  query: MuonEG/Run2018C-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
+  xsec: nul
+SingleMuonRun2018D:
   era: D
   process: Data
   key: muon
   query: SingleMuon/Run2018D-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
+  xsec: null
+EGammaRun2018D:
+  era: D
+  process: Data
+  key: electron
+  query: EGamma/Run2018D-UL2018_MiniAODv2_NanoAODv9-v3/NANOAOD
+  xsec: null
+DoubleMuonRun2018D:
+  era: D
+  process: Data
+  key: double_muon
+  query: DoubleMuon/Run2018D-UL2018_MiniAODv2_NanoAODv9-v2/NANOAOD
+  xsec: null
+MuonEGRun2018D:
+  era: D
+  process: Data
+  key: muon_electron
+  query: MuonEG/Run2018D-UL2018_MiniAODv2_NanoAODv9-v1/NANOAOD
   xsec: null
 DYJetsToLL_M-4to50_HT-100to200:
   era: MC

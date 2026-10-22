@@ -1,34 +1,52 @@
-MuonE:
+MuonRun2022E:
   era: E
   query: Muon/Run2022E-22Sep2023-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-MuonF:
+MuonRun2022F:
   era: F
   query: Muon/Run2022F-22Sep2023-v2/NANOAOD
   process: Data
   key: muon
   xsec: None
-MuonG:
+MuonRun2022G:
   era: G
   query: Muon/Run2022G-22Sep2023-v1/NANOAOD
   process: Data
   key: muon
   xsec: None
-EGammaE:
+MuonEGRun2022E:
+  era: E
+  query: MuonEG/Run2022E-22Sep2023-v1/NANOAOD
+  process: Data
+  key: muon_electron
+  xsec: None
+MuonEGRun2022F:
+  era: F
+  query: MuonEG/Run2022F-22Sep2023-v1/NANOAOD
+  process: Data
+  key: muon_electron
+  xsec: None
+MuonEGRun2022G:
+  era: G
+  query: MuonEG/Run2022G-22Sep2023-v1/NANOAOD
+  process: Data
+  key: muon_electron
+  xsec: None
+EGammaRun2022E:
   era: E
   query: EGamma/Run2022E-22Sep2023-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGammaF:
+EGammaRun2022F:
   era: F
   query: EGamma/Run2022F-22Sep2023-v1/NANOAOD
   process: Data
   key: electron
   xsec: None
-EGammaG:
+EGammaRun2022G:
   era: G
   query: EGamma/Run2022G-22Sep2023-v2/NANOAOD
   process: Data
