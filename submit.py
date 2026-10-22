@@ -113,5 +113,13 @@ if __name__ == "__main__":
         action="store_true",
         help="send xrd-cms-global partition filesets",
     )
+    parser.add_argument(
+        "-e",
+        "--executor",
+        dest="executor",
+        type=str,
+        default="futures",
+        help="executor to run the processor",
+    )
     args = parser.parse_args()
     main(args)
