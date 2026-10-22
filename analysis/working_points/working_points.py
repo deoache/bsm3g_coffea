@@ -105,15 +105,20 @@ class WorkingPoints:
     # Taus
     # -------------------------------------------
     def taus_vs_jet(self, events, wp):
+        tau_vs_jet_branch = (
+            events.Tau.idDeepTau2017v2p1VSjet
+            if hasattr(events.Tau, "idDeepTau2017v2p1VSjet")
+            else events.Tau.idDeepTau2018v2p5VSjet
+        )
         wps = {
-            "vvvloose": events.Tau.idDeepTau2017v2p1VSjet > 1,
-            "vvloose": events.Tau.idDeepTau2017v2p1VSjet > 2,
-            "vloose": events.Tau.idDeepTau2017v2p1VSjet > 4,
-            "loose": events.Tau.idDeepTau2017v2p1VSjet > 8,
-            "medium": events.Tau.idDeepTau2017v2p1VSjet > 16,
-            "tight": events.Tau.idDeepTau2017v2p1VSjet > 32,
-            "vtight": events.Tau.idDeepTau2017v2p1VSjet > 64,
-            "vvtight": events.Tau.idDeepTau2017v2p1VSjet > 128,
+            "vvvloose": tau_vs_jet_branch > 1,
+            "vvloose": tau_vs_jet_branch > 2,
+            "vloose": tau_vs_jet_branch > 4,
+            "loose": tau_vs_jet_branch > 8,
+            "medium": tau_vs_jet_branch > 16,
+            "tight": tau_vs_jet_branch > 32,
+            "vtight": tau_vs_jet_branch > 64,
+            "vvtight": tau_vs_jet_branch > 128,
         }
         if wp not in wps:
             raise ValueError(
@@ -122,15 +127,20 @@ class WorkingPoints:
         return wps[wp]
 
     def taus_vs_ele(self, events, wp):
+        tau_vs_ele_branch = (
+            events.Tau.idDeepTau2017v2p1VSe
+            if hasattr(events.Tau, "idDeepTau2017v2p1VSe")
+            else events.Tau.idDeepTau2018v2p5VSe
+        )
         wps = {
-            "vvvloose": events.Tau.idDeepTau2017v2p1VSe > 1,
-            "vvloose": events.Tau.idDeepTau2017v2p1VSe > 2,
-            "vloose": events.Tau.idDeepTau2017v2p1VSe > 4,
-            "loose": events.Tau.idDeepTau2017v2p1VSe > 8,
-            "medium": events.Tau.idDeepTau2017v2p1VSe > 16,
-            "tight": events.Tau.idDeepTau2017v2p1VSe > 32,
-            "vtight": events.Tau.idDeepTau2017v2p1VSe > 64,
-            "vvtight": events.Tau.idDeepTau2017v2p1VSe > 128,
+            "vvvloose": tau_vs_ele_branch > 1,
+            "vvloose": tau_vs_ele_branch > 2,
+            "vloose": tau_vs_ele_branch > 4,
+            "loose": tau_vs_ele_branch > 8,
+            "medium": tau_vs_ele_branch > 16,
+            "tight": tau_vs_ele_branch > 32,
+            "vtight": tau_vs_ele_branch > 64,
+            "vvtight": tau_vs_ele_branch > 128,
         }
         if wp not in wps:
             raise ValueError(
@@ -139,11 +149,16 @@ class WorkingPoints:
         return wps[wp]
 
     def taus_vs_mu(self, events, wp):
+        tau_vs_mu_branch = (
+            events.Tau.idDeepTau2017v2p1VSmu
+            if hasattr(events.Tau, "idDeepTau2017v2p1VSmu")
+            else events.Tau.idDeepTau2018v2p5VSmu
+        )
         wps = {
-            "vloose": events.Tau.idDeepTau2017v2p1VSmu > 1,
-            "loose": events.Tau.idDeepTau2017v2p1VSmu > 2,
-            "medium": events.Tau.idDeepTau2017v2p1VSmu > 4,
-            "tight": events.Tau.idDeepTau2017v2p1VSmu > 8,
+            "vloose": tau_vs_mu_branch > 1,
+            "loose": tau_vs_mu_branch > 2,
+            "medium": tau_vs_mu_branch > 4,
+            "tight": tau_vs_mu_branch > 8,
         }
         if wp not in wps:
             raise ValueError(
