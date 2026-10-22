@@ -252,6 +252,26 @@ def print_job_status(jobnum, jobnum_done):
     return jobnum_missing, datasets_with_missing
 
 
+def update_executor_for_dataset(job_dir, dataset, executor="iterative"):
+    """Update the executor in a dataset's arguments.json."""
+    args_json = job_dir / dataset / "arguments.json"
+
+    if not args_json.exists():
+        print(f"[{dataset}] Missing arguments.json — cannot update executor")
+        return
+
+    arguments = json.loads(args_json.read_text())
+
+    if arguments.get("executor") == executor:
+        print(f"[{dataset}] Executor is already '{executor}'")
+        return
+
+    arguments["executor"] = executor
+    args_json.write_text(json.dumps(arguments, indent=4) + "\n")
+
+    print(f"[{dataset}] Updated executor to '{executor}'")
+
+
 def analyze_xrootd_errors_by_dataset(error_files):
     """
     Analyze xrootd-related failures on a per-dataset basis.
@@ -276,25 +296,42 @@ def analyze_xrootd_errors_by_dataset(error_files):
         dataset -> set of sites that exhibited xrootd errors
     """
     dataset_sites = {}
+    datasets_with_auth_errors = set()
 
     for dataset, err_files in error_files.items():
-        xrootd_errs = extract_xrootd_errors(err_files)
+        endpoints, has_auth_error = extract_xrootd_errors(err_files)
+
+        if has_auth_error:
+            datasets_with_auth_errors.add(dataset)
+            print(
+                f"[{dataset}] XRootD authentication, connection, "
+                "or TLS error detected"
+            )
 
         # Translate xrootd endpoints to site names where possible
-        sites = {xroot_to_site[err] for err in xrootd_errs if err in xroot_to_site}
+        sites = {
+            xroot_to_site[endpoint]
+            for endpoint in endpoints
+            if endpoint in xroot_to_site
+        }
         if sites:
             dataset_sites[dataset] = sites
 
         # Warn explicitly if some endpoints could not be mapped
-        for err in xrootd_errs:
-            if err not in xroot_to_site:
+        for endpoint in endpoints:
+            if endpoint not in xroot_to_site:
                 print(
-                    f"[{dataset}] Could not map xrootd endpoint '{err}' to a site name"
+                    f"[{dataset}] Could not map XRootD endpoint "
+                    f"'{endpoint}' to a site name"
                 )
 
     if not dataset_sites:
-        print(f"No xrootd site failures detected in recent error logs.\n")
-    return dataset_sites
+        print("No XRootD site failures detected in recent error logs.\n")
+
+    if not datasets_with_auth_errors:
+        print("No XRootD authentication errors detected in recent error logs.\n")
+
+    return dataset_sites, datasets_with_auth_errors
 
 
 def group_datasets_by_sites(dataset_sites):
@@ -577,18 +614,32 @@ def main():
         update_partitions_to_global(job_dir, datasets_with_missing_jobs)
     else:
         # Analyze xrootd errors per dataset
-        dataset_sites = analyze_xrootd_errors_by_dataset(error_files)
+        dataset_sites, datasets_with_auth_errors = analyze_xrootd_errors_by_dataset(
+            error_files
+        )
+
+        # Only process datasets with missing jobs
+        missing_dataset_set = set(datasets_with_missing_jobs)
 
         # Restrict to datasets that actually have missing jobs
         dataset_sites = {
-            d: sites
-            for d, sites in dataset_sites.items()
-            if d in datasets_with_missing_jobs
+            dataset: sites
+            for dataset, sites in dataset_sites.items()
+            if dataset in missing_dataset_set
         }
+
+        datasets_with_auth_errors &= missing_dataset_set
+
+        if input(
+            "Authentication, connection, or TLS errors were detected. "
+            "Do you want to switch the executor to 'iterative' for the affected "
+            "datasets? [y/N]: "
+        ).strip().lower() in ["y", "yes"]:
+            for dataset in sorted(datasets_with_auth_errors):
+                update_executor_for_dataset(job_dir, dataset)
 
         if not dataset_sites:
             print("No xrootd-related failures detected for datasets with missing jobs.")
-            print("You may want to inspect other error modes or resubmit directly.\n")
         else:
             # Group datasets by identical failing-site sets
             if args.single_fetch:

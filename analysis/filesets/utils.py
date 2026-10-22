@@ -57,7 +57,9 @@ def get_dataset_config(year):
     aux_year = aux_year_map.get(year, year)
     fileset_path = Path(f"{Path.cwd()}/analysis/filesets")
     run_key = "Run3" if year.startswith("202") else "Run2"
-    nano_version = "nanov15" if year == "2024" else ("nanov9" if run_key == "Run2" else "nanov12")
+    nano_version = (
+        "nanov15" if year == "2024" else ("nanov9" if run_key == "Run2" else "nanov12")
+    )
     with open(f"{fileset_path}/{aux_year}_{nano_version}.yaml", "r") as f:
         dataset_config = yaml.safe_load(f)
     return dataset_config
@@ -108,25 +110,83 @@ def modify_site_list(year: str, site: str, status: str) -> None:
         yaml.dump(data, f, default_flow_style=False)
 
 
-def extract_xrootd_errors(error_files: list) -> set:
+def extract_xrootd_errors(error_files: list) -> tuple[set, bool]:
     """
-    Extract xrootd URLs from a list of Condor error log files.
+    Analyze XRootD error logs to identify failing endpoints and executor errors.
 
-    Parameters:
-    -----------
-        error_files: (list of str or Path): Paths to error log files.
+    The function distinguishes between two types of failures:
+    - Read errors: logs containing XRootD endpoints, which can be mapped to
+      sites and used by the existing site-blacklisting workflow.
+    - Authentication or connection errors: logs containing known XRootD
+      authentication or connection failure messages. These errors indicate
+      that the executor may need to be changed to ``iterative``.
 
-    Returns:
-    --------
-        set: A set of unique xrootd endpoints found in the logs.
+    Logs identified as authentication or connection failures are not used
+    to extract endpoints. This is appropriate when these logs do not contain
+    endpoint information, as observed in the current workflow.
+
+    Parameters
+    ----------
+    error_files : list[pathlib.Path]
+        Paths to the Condor error log files to analyze for a single dataset.
+
+    Returns
+    -------
+    tuple[set, bool]
+        A tuple containing:
+
+        - endpoints (set[str]): Unique XRootD endpoints extracted from logs
+          that do not match the authentication or connection error patterns.
+          These endpoints can subsequently be mapped to sites.
+        - has_auth_or_connection_error (bool): ``True`` if at least one log
+          contains a recognized authentication or connection error; otherwise
+          ``False``.
+
+    Notes
+    -----
+    The function recognizes the following error messages:
+    - ``Auth failed``
+    - ``No protocols left to try``
+    - ``[FATAL] Connection error``
+    - ``[FATAL] TLS error``
+
+    Error matching is case-insensitive. Endpoint extraction recognizes URLs
+    in the form ``root://hostname`` or ``root://hostname:port``.
+
+    The function only identifies error types and extracts endpoints; it
+    does not modify input filesets, update executor settings, or resubmit jobs.
+    Those actions are handled by the calling workflow.
     """
-    xrootd_errs = set()
+    endpoints = set()
+    has_auth_or_connection_error = False
+
+    endpoint_pattern = r"root://[a-zA-Z0-9\-.]+(?::\d+)?"
+    executor_error_patterns = [
+        r"Auth failed",
+        r"No protocols left to try",
+        r"\[FATAL\]\s*Connection error",
+        r"\[FATAL\]\s*TLS error",
+    ]
+
     for error_file in error_files:
-        with open(error_file, "r") as f:
-            err_content = f.read()
-        xrootd_matches = re.findall(r"root://[a-zA-Z0-9\-.]+(?:[:]\d+)?", err_content)
-        xrootd_errs.update(xrootd_matches)
-    return xrootd_errs
+        content = error_file.read_text(errors="replace")
+
+        if any(
+            re.search(pattern, content, flags=re.IGNORECASE)
+            for pattern in executor_error_patterns
+        ):
+            has_auth_or_connection_error = True
+            continue
+
+        endpoints.update(
+            re.findall(
+                endpoint_pattern,
+                content,
+                flags=re.IGNORECASE,
+            )
+        )
+
+    return endpoints, has_auth_or_connection_error
 
 
 def get_datasets_map(year: str):
