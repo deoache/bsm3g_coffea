@@ -604,7 +604,6 @@ def main():
     jobnum, jobnum_done, error_files = get_jobs_info(
         job_dir, output_dir, log_dir, args.output_format, args.hours_ago
     )
-
     jobnum_missing, datasets_with_missing_jobs = print_job_status(jobnum, jobnum_done)
 
     if not datasets_with_missing_jobs:
@@ -617,7 +616,6 @@ def main():
         dataset_sites, datasets_with_auth_errors = analyze_xrootd_errors_by_dataset(
             error_files
         )
-
         # Only process datasets with missing jobs
         missing_dataset_set = set(datasets_with_missing_jobs)
 
@@ -630,13 +628,14 @@ def main():
 
         datasets_with_auth_errors &= missing_dataset_set
 
-        if input(
-            "Authentication, connection, or TLS errors were detected. "
-            "Do you want to switch the executor to 'iterative' for the affected "
-            "datasets? [y/N]: "
-        ).strip().lower() in ["y", "yes"]:
-            for dataset in sorted(datasets_with_auth_errors):
-                update_executor_for_dataset(job_dir, dataset)
+        if datasets_with_auth_errors:
+            if input(
+                "Authentication, connection, or TLS errors were detected. "
+                "Do you want to switch the executor to 'iterative' for the affected "
+                "datasets? [y/N]: "
+            ).strip().lower() in ["y", "yes"]:
+                for dataset in sorted(datasets_with_auth_errors):
+                    update_executor_for_dataset(job_dir, dataset)
 
         if not dataset_sites:
             print("No xrootd-related failures detected for datasets with missing jobs.")
