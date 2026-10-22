@@ -15,7 +15,7 @@ def main(args):
     if args.executor == "futures":
         futures_run = processor.Runner(
             executor=processor.FuturesExecutor(
-                workers=args.workers, compression=None, retries=6
+                workers=4, compression=None, retries=6
             ),
             schema=NanoAODSchema,
             # chunksize=100000,
