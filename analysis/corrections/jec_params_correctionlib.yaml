@@ -1,0 +1,49 @@
+'2016preVFP':
+  MC: "Summer19UL16APV_V7 Summer20UL16APV_JRV5"
+  Run2016B: "Summer19UL16APV_V7"
+  Run2016C: "Summer19UL16APV_V7"
+  Run2016D: "Summer19UL16APV_V7"
+  Run2016E: "Summer19UL16APV_V7"
+  Run2016F: "Summer19UL16APV_V7"
+'2016postVFP':
+  MC: "Summer19UL16_V7 Summer20UL16_JRV5"
+  Run2016F: "Summer19UL16_V7"
+  Run2016G: "Summer19UL16_V7"
+  Run2016H: "Summer19UL16_V7"
+'2017':
+  MC: "Summer19UL17_V5 Summer19UL17_JRV4"
+  Run2017B: "Summer19UL17_V5"
+  Run2017C: "Summer19UL17_V5"
+  Run2017D: "Summer19UL17_V5"
+  Run2017E: "Summer19UL17_V5"
+  Run2017F: "Summer19UL17_V5"
+'2018':
+  MC: "Summer19UL18_V5 Summer19UL18_JRV3"
+  Run2018A: "Summer19UL18_V5"
+  Run2018B: "Summer19UL18_V5"
+  Run2018C: "Summer19UL18_V5"
+  Run2018D: "Summer19UL18_V5"
+'2022preEE':
+  MC: "Summer22_22Sep2023_V4 Summer22_22Sep2023_JRV2"
+  Run2022C: "Summer22_22Sep2023_V4"
+  Run2022D: "Summer22_22Sep2023_V4"
+'2022postEE':
+  MC: "Summer22EE_22Sep2023_V4 Summer22EE_22Sep2023_JRV2"
+  Run2022E: "Summer22EE_22Sep2023_V4"
+  Run2022F: "Summer22EE_22Sep2023_V4"
+  Run2022G: "Summer22EE_22Sep2023_V4"
+'2023preBPix':
+  MC: "Summer23Prompt23_V4 Summer23Prompt23_RunCv1234_JRV3"
+  Run2023C: "Summer23Prompt23_V4"
+'2023postBPix':
+  MC: "Summer23BPixPrompt23_V4 Summer23BPixPrompt23_RunD_JRV3"
+  Run2023D: "Summer23BPixPrompt23_V4"
+'2024':
+  MC: "Summer24Prompt24_V5 Summer24Prompt24_JRV2"
+  Run2024C: "Summer24Prompt24_V5"
+  Run2024D: "Summer24Prompt24_V5"
+  Run2024E: "Summer24Prompt24_V5"
+  Run2024F: "Summer24Prompt24_V5"
+  Run2024G: "Summer24Prompt24_V5"
+  Run2024H: "Summer24Prompt24_V5"
+  Run2024I: "Summer24Prompt24_V5"

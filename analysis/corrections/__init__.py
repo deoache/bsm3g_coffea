@@ -5,7 +5,7 @@ from analysis.corrections.top_pt import add_top_pt_weight
 from analysis.corrections.lhepdf import add_lhepdf_weight
 from analysis.corrections.pileup import add_pileup_weight
 from analysis.corrections.isr_weight import add_isr_weight
-from analysis.corrections.jerc import apply_jerc_corrections
+from analysis.corrections.jec import apply_jerc_corrections
 from analysis.corrections.electron import ElectronCorrector
 from analysis.corrections.pujetid import add_pujetid_weight
 from analysis.corrections.lhescale import add_scalevar_weight

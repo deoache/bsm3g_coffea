@@ -32,15 +32,12 @@ def object_corrector_manager(events, year, run, dataset, workflow_config):
 
     shifts = []
     if objcorr_config:
-
         if "jets" in objcorr_config:
             shifts = apply_jerc_corrections(
-                events,
+                events=events,
                 year=year,
-                dataset=dataset,
                 shifts=shifts,
                 corrections_config=workflow_config.corrections_config,
-                apply_junc=False,
             )
         else:
             met_field_key = "MET" if year.startswith("201") else "PuppiMET"
