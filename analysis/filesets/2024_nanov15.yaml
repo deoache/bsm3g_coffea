@@ -238,6 +238,42 @@ EGamma1Run2024Iv2:
   process: Data
   key: electron
   xsec: None
+DYto2Mu_10to50:
+  era: MC
+  query: DYto2Mu-2Jets_Bin-MLL-10to50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/RunIII2024Summer24NanoAODv15-150X_mcRun3_2024_realistic_v2-v2/NANOAODSIM
+  process: DYJetsToLL
+  key: dy_inclusive
+  xsec: 7047
+DYto2Mu_50:
+  era: MC
+  query: DYto2Mu-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/RunIII2024Summer24NanoAODv15-150X_mcRun3_2024_realistic_v2-v6/NANOAODSIM
+  process: DYJetsToLL
+  key: dy_inclusive
+  xsec: 2124.08
+DYto2E_10to50:
+  era: MC
+  query: DYto2E-2Jets_Bin-MLL-10to50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/RunIII2024Summer24NanoAODv15-150X_mcRun3_2024_realistic_v2-v2/NANOAODSIM
+  process: DYJetsToLL
+  key: dy_inclusive
+  xsec: 7047
+DYto2E_50:
+  era: MC
+  query: DYto2E-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/RunIII2024Summer24NanoAODv15-150X_mcRun3_2024_realistic_v2-v4/NANOAODSIM
+  process: DYJetsToLL
+  key: dy_inclusive
+  xsec: 2124.08
+DYto2Tau_10to50:
+  era: MC
+  query: DYto2Tau-2Jets_Bin-MLL-10to50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/RunIII2024Summer24NanoAODv15-150X_mcRun3_2024_realistic_v2-v2/NANOAODSIM
+  process: DYJetsToLL
+  key: dy_inclusive
+  xsec: 7047
+DYto2Tau_50:
+  era: MC
+  query: DYto2Tau-2Jets_Bin-MLL-50_TuneCP5_13p6TeV_amcatnloFXFX-pythia8/RunIII2024Summer24NanoAODv15-150X_mcRun3_2024_realistic_v2-v7/NANOAODSIM
+  process: DYJetsToLL
+  key: dy_inclusive
+  xsec: 2124.08
 DYJetsToLL_4to50_HT40to70:
   era: MC
   query: DYto2L-4Jets_Bin-HT-40to70-MLL-4to50_TuneCP5_13p6TeV_madgraphMLM-pythia8/RunIII2024Summer24NanoAODv15-150X_mcRun3_2024_realistic_v2-v2/NANOAODSIM
