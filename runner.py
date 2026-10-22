@@ -4,7 +4,6 @@ import subprocess
 from pathlib import Path
 from analysis.filesets.utils import get_datasets_to_run_over, fileset_checker
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -74,15 +73,17 @@ if __name__ == "__main__":
         help="Requested memory (in MB) for the condor job",
     )
     parser.add_argument(
-        "--workers",
-        type=int,
-        default=4,
-        help="change the number of workers to process the analysis",
-    )
-    parser.add_argument(
         "--global",
         action="store_true",
         help="send xrd-cms-global partition filesets",
+    )
+    parser.add_argument(
+        "-e",
+        "--executor",
+        dest="executor",
+        type=str,
+        default="futures",
+        help="executor to run the processor",
     )
     args = parser.parse_args()
 
@@ -104,8 +105,8 @@ if __name__ == "__main__":
             args.output_format,
             "--memory",
             args.memory,
-            "--workers",
-            str(args.workers)
+            "--executor",
+            args.executor,
         ]
         if args.submit:
             cmd_args.append("--submit")
@@ -114,7 +115,7 @@ if __name__ == "__main__":
         if args.label:
             cmd_args.append("--label")
             cmd_args.append(args.label)
-        if getattr(args,"global"):
+        if getattr(args, "global"):
             cmd_args.append("--global")
 
         subprocess.run(cmd + cmd_args)

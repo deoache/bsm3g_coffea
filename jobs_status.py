@@ -117,6 +117,14 @@ def parse_args():
         default="",
         help="output directory label",
     )
+    parser.add_argument(
+        "-e",
+        "--executor",
+        dest="executor",
+        type=str,
+        default="futures",
+        help="executor to run the processor",
+    )
     return parser.parse_args()
 
 
@@ -329,7 +337,11 @@ def group_datasets_by_sites(dataset_sites):
 
 
 def update_input_filesets_for_group(
-    sites_to_blacklist, year, fileset_dir, job_dir, datasets, use_global
+    sites_to_blacklist,
+    year,
+    fileset_dir,
+    job_dir,
+    datasets,
 ):
     """
     Build input filesets for a group of datasets that share the same
@@ -415,13 +427,35 @@ def update_input_filesets_for_group(
         with open(partition_file, "w") as json_file:
             json.dump(partition_dataset, json_file, indent=4)
 
-        if use_global:
-            subprocess.run(
-                f"sed -i -E 's#root://.*/store/#root://cms-xrd-global.cern.ch//store/#g' {partition_file}",
-                shell=True,
-            )
-
     print("Fileset for this group completed.\n")
+
+
+def update_partitions_to_global(job_dir, datasets):
+    """Replace XRootD endpoints with the CMS global redirector."""
+    global_redirector = "root://cms-xrd-global.cern.ch//store/"
+
+    for dataset in datasets:
+        partition_file = job_dir / dataset / "partitions.json"
+
+        if not partition_file.exists():
+            print(f"[{dataset}] Missing partitions.json — skipping")
+            continue
+
+        partitions = json.loads(partition_file.read_text())
+
+        for partition in partitions.values():
+            for sample in partition.values():
+                sample["files"] = {
+                    (
+                        global_redirector + filename.split("/store/", 1)[1]
+                        if "/store/" in filename
+                        else filename
+                    ): tree
+                    for filename, tree in sample["files"].items()
+                }
+
+        partition_file.write_text(json.dumps(partitions, indent=4))
+        print(f"[{dataset}] Updated partitions to CMS global redirector")
 
 
 def resubmit_jobs(job_dir, jobnum_missing, datasets_with_missing_jobs, workflow, year):
@@ -516,6 +550,8 @@ def main():
             args.output_format,
             "-m",
             args.memory,
+            "--executor",
+            args.executor,
         ]
         if args.eos:
             reset_cmd.append("--eos")
@@ -537,42 +573,46 @@ def main():
     if not datasets_with_missing_jobs:
         return
 
-    # Analyze xrootd errors per dataset
-    dataset_sites = analyze_xrootd_errors_by_dataset(error_files)
-
-    # Restrict to datasets that actually have missing jobs
-    dataset_sites = {
-        d: sites
-        for d, sites in dataset_sites.items()
-        if d in datasets_with_missing_jobs
-    }
-
-    if not dataset_sites:
-        print("No xrootd-related failures detected for datasets with missing jobs.")
-        print("You may want to inspect other error modes or resubmit directly.\n")
+    if getattr(args, "global"):
+        update_partitions_to_global(job_dir, datasets_with_missing_jobs)
     else:
-        # Group datasets by identical failing-site sets
-        if args.single_fetch:
-            all_sites = set().union(*dataset_sites.values())
-            all_datasets = sorted(dataset_sites.keys())
-            groups = {frozenset(all_sites): all_datasets}
-        else:
-            groups = group_datasets_by_sites(dataset_sites)
+        # Analyze xrootd errors per dataset
+        dataset_sites = analyze_xrootd_errors_by_dataset(error_files)
 
-        # Optional fileset building
-        if timed_input("Build input filesets for these groups? (y/n): ").lower() in [
-            "y",
-            "yes",
-        ]:
-            for sites, datasets in groups.items():
-                update_input_filesets_for_group(
-                    sites,
-                    args.year,
-                    fileset_dir,
-                    job_dir,
-                    datasets,
-                    getattr(args, "global"),
-                )
+        # Restrict to datasets that actually have missing jobs
+        dataset_sites = {
+            d: sites
+            for d, sites in dataset_sites.items()
+            if d in datasets_with_missing_jobs
+        }
+
+        if not dataset_sites:
+            print("No xrootd-related failures detected for datasets with missing jobs.")
+            print("You may want to inspect other error modes or resubmit directly.\n")
+        else:
+            # Group datasets by identical failing-site sets
+            if args.single_fetch:
+                all_sites = set().union(*dataset_sites.values())
+                all_datasets = sorted(dataset_sites.keys())
+                groups = {frozenset(all_sites): all_datasets}
+            else:
+                groups = group_datasets_by_sites(dataset_sites)
+
+            # Optional fileset building
+            if timed_input(
+                "Build input filesets for these groups? (y/n): "
+            ).lower() in [
+                "y",
+                "yes",
+            ]:
+                for sites, datasets in groups.items():
+                    update_input_filesets_for_group(
+                        sites,
+                        args.year,
+                        fileset_dir,
+                        job_dir,
+                        datasets,
+                    )
 
     # Optional job resubmission
     if timed_input("Resubmit missing jobs now? (y/n): ").lower() in ["y", "yes"]:

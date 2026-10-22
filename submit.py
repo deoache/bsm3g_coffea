@@ -12,25 +12,39 @@ def main(args):
     with open(args.partition_json) as f:
         partition_fileset = json.load(f)
     # Configure the Runner using coffea 2024+ API
-    futures_run = processor.Runner(
-        executor=processor.FuturesExecutor(
-            workers=args.workers, compression=None, retries=6
-        ),
-        schema=NanoAODSchema,
-        chunksize=100000,
-        savemetrics=False,
-        xrootdtimeout=120,
-        align_clusters=True,
-        skipbadfiles=False,
-    )
-    # Execute processing job using the Runner instance
-    out = futures_run(
-        partition_fileset,
-        treename="Events",
-        processor_instance=BaseProcessor(
-            workflow=args.workflow, year=args.year, mode="virtual"
-        ),
-    )
+    if args.executor == "futures":
+        futures_run = processor.Runner(
+            executor=processor.FuturesExecutor(
+                workers=args.workers, compression=None, retries=6
+            ),
+            schema=NanoAODSchema,
+            # chunksize=100000,
+            savemetrics=False,
+            xrootdtimeout=120,
+            align_clusters=True,
+            skipbadfiles=False,
+        )
+        # Execute processing job using the Runner instance
+        out = futures_run(
+            partition_fileset,
+            treename="Events",
+            processor_instance=BaseProcessor(
+                workflow=args.workflow, year=args.year, mode="virtual"
+            ),
+        )
+    elif args.executor == "iterative":
+        iterative_run = processor.Runner(
+            executor=processor.IterativeExecutor(compression=None),
+            schema=NanoAODSchema,
+            savemetrics=False,
+        )
+        out = iterative_run(
+            partition_fileset,
+            processor_instance=BaseProcessor(
+                workflow=args.workflow, year=args.year, mode="virtual"
+            ),
+        )
+
     savepath = f"{args.output_path}/{args.dataset}"
     if args.output_format == "coffea":
         save(out, f"{savepath}.coffea")
@@ -93,12 +107,6 @@ if __name__ == "__main__":
         default="coffea",
         choices=["coffea", "root"],
         help="format of output histogram",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=4,
-        help="change the number of workers to process the analysis",
     )
     parser.add_argument(
         "--global",

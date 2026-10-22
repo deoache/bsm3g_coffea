@@ -29,7 +29,7 @@ def move_proxy() -> str:
 def submit_condor(args):
     """Build condor files. Optionally submit condor job"""
     print(f"Creating {args.workflow}-{args.year}-{args.dataset} condor file")
-    
+
     jobname = f"{args.workflow}_{args.dataset}"
 
     # make condor and log directories
@@ -38,7 +38,7 @@ def submit_condor(args):
     if args.label:
         job_dir = job_dir / args.label
     job_dir = job_dir / args.year / args.dataset
-    
+
     if not job_dir.exists():
         job_dir.mkdir(parents=True, exist_ok=True)
 
@@ -46,7 +46,7 @@ def submit_condor(args):
     if args.label:
         log_dir = log_dir / args.label
     log_dir = log_dir / args.year / args.dataset
-    
+
     if not log_dir.exists():
         log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -56,10 +56,10 @@ def submit_condor(args):
     jobnum_list = []
     partition_dataset = {}
     fileset_path = Path.cwd() / "analysis" / "filesets"
-    
+
     with open(fileset_path / f"fileset_{args.year}_NANO_lxplus.json", "r") as f:
         dataset_data = json.load(f)[args.dataset]
-        
+
     # extract the dictionary of files {"path.root": "Events"} and the metadata
     files_dict = dataset_data["files"]
     metadata = dataset_data.get("metadata", {})
@@ -69,25 +69,23 @@ def submit_condor(args):
     file_chunks = divide_list(file_items, args.nfiles)
 
     for i, chunk in enumerate(file_chunks, start=1):
-        dataset_key = (
-            f"{args.dataset}_{i}" if len(file_chunks) > 1 else args.dataset
-        )
-        
+        dataset_key = f"{args.dataset}_{i}" if len(file_chunks) > 1 else args.dataset
+
         # reconstruct the structure for each individual job.
         partition_dataset[i] = {
-            dataset_key: {
-                "files": dict(chunk),
-                "metadata": metadata
-            }
+            dataset_key: {"files": dict(chunk), "metadata": metadata}
         }
         jobnum_list.append(i)
     partition_file = job_dir / "partitions.json"
- 
+
     with open(f"{partition_file}", "w") as json_file:
         json.dump(partition_dataset, json_file, indent=4)
 
-    if getattr(args,"global"):
-        subprocess.run(f"sed -i -E 's#root://.*/store/#root://cms-xrd-global.cern.ch//store/#g' {partition_file}",shell=True)
+    if getattr(args, "global"):
+        subprocess.run(
+            f"sed -i -E 's#root://.*/store/#root://cms-xrd-global.cern.ch//store/#g' {partition_file}",
+            shell=True,
+        )
 
     jobnum_file = job_dir / "jobnum.txt"
     with open(f"{jobnum_file}", "w") as f:
@@ -115,6 +113,7 @@ def submit_condor(args):
             )
             line = line.replace("JOBNUM_FILE", str(jobnum_file))
             line = line.replace("MEMORY", args.memory)
+            line = line.replace("CPUS", "4" if args.executor == "futures" else "1")
             condor_file.write(line)
 
     if args.submit:
@@ -197,16 +196,17 @@ if __name__ == "__main__":
         help="Requested memory (in MB) for the condor job",
     )
     parser.add_argument(
-        "--workers",
-        dest="workers",
-        type=int,
-        default=4,
-        help="change the number of workers to process the analysis",
-    )
-    parser.add_argument(
         "--global",
         action="store_true",
         help="send xrd-cms-global partition filesets",
+    )
+    parser.add_argument(
+        "-e",
+        "--executor",
+        dest="executor",
+        type=str,
+        default="futures",
+        help="executor to run the processor",
     )
     args = parser.parse_args()
     submit_condor(args)
