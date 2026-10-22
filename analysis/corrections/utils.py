@@ -14,7 +14,6 @@ from coffea.analysis_tools import Weights
 from coffea.nanoevents.methods.base import NanoEventsArray
 from correctionlib.schemav2 import Correction, CorrectionSet
 
-
 # CorrectionLib files are available from
 POG_CORRECTION_PATH = "/cvmfs/cms.cern.ch/rsync/cms-nanoAOD/jsonpog-integration"
 
@@ -42,6 +41,7 @@ pog_years = {
     "2022postEE": "2022_Summer22EE",
     "2023preBPix": "2023_Summer23",
     "2023postBPix": "2023_Summer23BPix",
+    "2024": "2024_Summer24",
 }
 
 
@@ -56,11 +56,19 @@ def get_pog_json(json_name: str, year: str) -> str:
         year:
             dataset year {2016preVFP, 2016postVFP, 2017, 2018, 2022preEE, 2022postEE, 2023preBPix, 2023postBPix}
     """
+    if json_name == "pileup" and year == "2024":
+        return "/cvmfs/cms-griddata.cern.ch/cat/metadata/LUM/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/puWeights_CDEFGHI.json.gz"
     if json_name in POG_JSONS:
         pog_json = POG_JSONS[json_name]
     else:
         print(f"No json for {json_name}")
-    return f"{POG_CORRECTION_PATH}/POG/{pog_json[0]}/{pog_years[year]}/{pog_json[1]}"
+    if year == "2024" and (json_name.startswith("electron")):
+        EGM_CORRECTION_PATH = "/cvmfs/cms-griddata.cern.ch/cat/metadata/EGM/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest"
+        return f"{EGM_CORRECTION_PATH}/{pog_json[1]}"
+    else:
+        return (
+            f"{POG_CORRECTION_PATH}/POG/{pog_json[0]}/{pog_years[year]}/{pog_json[1]}"
+        )
 
 
 def get_muon_hlt_json(year: str) -> str:

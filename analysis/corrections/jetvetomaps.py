@@ -37,6 +37,7 @@ def jetvetomap(events: ak.Array, year: str, mapname: str = "jetvetomap"):
         "2022postEE": "Summer22EE_23Sep2023_RunEFG_V1",
         "2023preBPix": "Summer23Prompt23_RunC_V1",
         "2023postBPix": "Summer23BPixPrompt23_RunD_V1",
+        "2024": "Summer24Prompt24_RunBCDEFGHI_V1",
     }
     cset = correctionlib.CorrectionSet.from_file(get_pog_json("jetvetomaps", year))
 
