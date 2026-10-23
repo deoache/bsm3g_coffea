@@ -44,6 +44,14 @@ pog_years = {
     "2024": "2024_Summer24",
 }
 
+tau_years = {
+    "2022preEE": "Run3-22CDSep23-Summer22-NanoAODv12",
+    "2022postEE": "Run3-22EFGSep23-Summer22EE-NanoAODv12",
+    "2023preBPix": "Run3-23CSep23-Summer23-NanoAODv12",
+    "2023postBPix": "Run3-23DSep23-Summer23BPix-NanoAODv12",
+    "2024": "Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15",
+}
+
 
 def get_pog_json(json_name: str, year: str) -> str:
     """
@@ -56,15 +64,23 @@ def get_pog_json(json_name: str, year: str) -> str:
         year:
             dataset year {2016preVFP, 2016postVFP, 2017, 2018, 2022preEE, 2022postEE, 2023preBPix, 2023postBPix}
     """
-    if json_name == "pileup" and year == "2024":
-        return "/cvmfs/cms-griddata.cern.ch/cat/metadata/LUM/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/puWeights_CDEFGHI.json.gz"
     if json_name in POG_JSONS:
         pog_json = POG_JSONS[json_name]
     else:
         print(f"No json for {json_name}")
+    if json_name == "pileup" and year == "2024":
+        return "/cvmfs/cms-griddata.cern.ch/cat/metadata/LUM/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/puWeights_CDEFGHI.json.gz"
     if year == "2024" and (json_name.startswith("electron")):
         EGM_CORRECTION_PATH = "/cvmfs/cms-griddata.cern.ch/cat/metadata/EGM/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest"
         return f"{EGM_CORRECTION_PATH}/{pog_json[1]}"
+    elif year == "2024" and json_name == "btag":
+        BTV_CORRECTION_PATH = "/cvmfs/cms-griddata.cern.ch/cat/metadata/BTV/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest"
+        return f"{BTV_CORRECTION_PATH}/{pog_json[1]}"
+    elif year in tau_years.keys() and json_name == "tau":
+        TAU_CORRECTION_PATH = (
+            f"/cvmfs/cms-griddata.cern.ch/cat/metadata/TAU/{tau_years[year]}/latest"
+        )
+        return f"{TAU_CORRECTION_PATH}/{pog_json[1]}"
     else:
         return (
             f"{POG_CORRECTION_PATH}/POG/{pog_json[0]}/{pog_years[year]}/{pog_json[1]}"
