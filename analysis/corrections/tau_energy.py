@@ -1,3 +1,4 @@
+import copy
 import correctionlib
 import numpy as np
 import awkward as ak
@@ -6,9 +7,9 @@ from analysis.corrections.met import corrected_polar_met
 
 # ----------------------------------------------------------------------------------- #
 # -- The tau energy scale (TES) corrections for taus are provided  ------------------ #
-# -- to be applied to reconstructed tau_h Lorentz vector ---------------------------- #
-# -- It should be applied to genuine taus and specific fake channels ---------------- #
-# ----------- (pT, mass, and energy) in simulated data ------------------------------ #
+# --  to be applied to reconstructed tau_h Lorentz vector ----------------------------#
+# --  It should be applied to a genuine tau -> genmatch = 5 --------------------------#
+# -----------  (pT, mass and energy) in simulated data -------------------------------#
 # tau_E  *= tes
 # tau_pt *= tes
 # tau_m  *= tes
@@ -79,48 +80,38 @@ def mask_energy_corrections(tau, year="2017"):
         return mask_gm26 | mask_gm5 | mask_gm1
 
 
-def apply_tau_energy_scale_corrections(events, year):
-    """
-    Apply Tau Energy Scale (TES) corrections and propagate systemic variations
-    to Tau objects and the corresponding MET collection (MET for Run 2, PuppiMET for Run 3).
-    """
-    run = "2" if year.startswith("201") else "3"
-    met_name = "MET" if run == "2" else "PuppiMET"
-
-    # Save original raw pT and mass values
-    events["Tau", "pt_raw"] = ak.ones_like(events.Tau.pt) * events.Tau.pt
-    events["Tau", "mass_raw"] = ak.ones_like(events.Tau.mass) * events.Tau.mass
-
-    out = ak.flatten(events.Tau)
-    counts = ak.num(events.Tau)
-
-    # Build dynamically adapted mask based on year
-    mask = mask_energy_corrections(out, year=year)
-
-    # Filter ONLY valid Taus into clean 1D arrays without None values
-    taus_valid = out[mask]
-
-    pt_valid = taus_valid.pt_raw
-    eta_valid = taus_valid.eta
-    dm_valid = taus_valid.decayMode
-    genmatch_valid = taus_valid.genPartFlav
-
+def apply_tau_energy_scale_corrections(
+    events, year, shifts: dict, corrections_config: dict
+):
+    # define correction set
     cset = correctionlib.CorrectionSet.from_file(
         get_pog_json(json_name="tau", year=year)
     )
 
+    # define tau pt_raw field
+    events["Tau", "pt_raw"] = ak.ones_like(events.Tau.pt) * events.Tau.pt
+    events["Tau", "mass_raw"] = ak.ones_like(events.Tau.mass) * events.Tau.mass
+
+    flat_taus = ak.flatten(events.Tau)
+    counts = ak.num(events.Tau)
+
+    # it is defined the taus will be corrected with the energy scale factor: Only a subset of the initial taus.
+    mask = mask_energy_corrections(flat_taus, year)
+    taus_filter = flat_taus.mask[mask]
+
+    # fill None values with valid entries
+    pt_valid = ak.fill_none(taus_filter.pt_raw, 0)
+    eta_valid = ak.fill_none(taus_filter.eta, 0)
+    dm_valid = ak.fill_none(taus_filter.decayMode, 0)
+    genmatch_valid = ak.fill_none(taus_filter.genPartFlav, 0)
+
+    run = "2" if year.startswith("201") else "3"
     deep_tau = "DeepTau2017v2p1" if run == "2" else "DeepTau2018v2p5"
 
-    # Evaluate scale factors on valid entries only
+    # get scale factors
     if run == "2":
         sf_valid = cset["tau_energy_scale"].evaluate(
             pt_valid, eta_valid, dm_valid, genmatch_valid, deep_tau, "nom"
-        )
-        sf_up_valid = cset["tau_energy_scale"].evaluate(
-            pt_valid, eta_valid, dm_valid, genmatch_valid, deep_tau, "up"
-        )
-        sf_down_valid = cset["tau_energy_scale"].evaluate(
-            pt_valid, eta_valid, dm_valid, genmatch_valid, deep_tau, "down"
         )
     else:
         sf_valid = cset["tau_energy_scale"].evaluate(
@@ -133,73 +124,21 @@ def apply_tau_energy_scale_corrections(events, year):
             "VVLoose",
             "nom",
         )
-        sf_up_valid = cset["tau_energy_scale"].evaluate(
-            pt_valid,
-            eta_valid,
-            dm_valid,
-            genmatch_valid,
-            deep_tau,
-            "Medium",
-            "VVLoose",
-            "up",
-        )
-        sf_down_valid = cset["tau_energy_scale"].evaluate(
-            pt_valid,
-            eta_valid,
-            dm_valid,
-            genmatch_valid,
-            deep_tau,
-            "Medium",
-            "VVLoose",
-            "down",
-        )
 
-    # Reconstruct flat 1D arrays starting from raw values
-    pt_nom = ak.to_numpy(out.pt_raw).copy()
-    mass_nom = ak.to_numpy(out.mass_raw).copy()
+    corrected_pt = ak.where(mask, taus_filter.pt_raw * sf_valid, flat_taus.pt_raw)
+    corrected_mass = ak.where(mask, taus_filter.mass_raw * sf_valid, flat_taus.mass_raw)
 
-    pt_up = ak.to_numpy(out.pt_raw).copy()
-    mass_up = ak.to_numpy(out.mass_raw).copy()
+    events["Tau", "pt"] = ak.unflatten(corrected_pt, counts)
+    events["Tau", "mass"] = ak.unflatten(corrected_mass, counts)
+    for i in range(len(shifts)):
+        shifts[i][0]["Tau"] = events.Tau
 
-    pt_down = ak.to_numpy(out.pt_raw).copy()
-    mass_down = ak.to_numpy(out.mass_raw).copy()
-
-    mask_np = ak.to_numpy(mask)
-
-    # Multiply scale factors only at masked valid indices
-    pt_nom[mask_np] *= ak.to_numpy(sf_valid)
-    mass_nom[mask_np] *= ak.to_numpy(sf_valid)
-
-    pt_up[mask_np] *= ak.to_numpy(sf_up_valid)
-    mass_up[mask_np] *= ak.to_numpy(sf_up_valid)
-
-    pt_down[mask_np] *= ak.to_numpy(sf_down_valid)
-    mass_down[mask_np] *= ak.to_numpy(sf_down_valid)
-
-    # Re-assemble Tau collection fields
-    fields = ak.fields(out)
-    out_dict = {field: out[field] for field in fields}
-
-    out_dict["pt"] = ak.Array(pt_nom)
-    out_dict["mass"] = ak.Array(mass_nom)
-
-    up = ak.with_field(out, ak.Array(pt_up), where="pt")
-    up = ak.with_field(up, ak.Array(mass_up), where="mass")
-
-    down = ak.with_field(out, ak.Array(pt_down), where="pt")
-    down = ak.with_field(down, ak.Array(mass_down), where="mass")
-
-    out_dict["tau_energy"] = ak.zip(
-        {"up": up, "down": down}, depth_limit=1, with_name="TauSystematic"
+    # Propagate tau pT changes to MET
+    met_name = "MET" if run == "2" else "PuppiMET"
+    events[met_name, "pt_raw"] = ak.ones_like(events[met_name].pt) * events[met_name].pt
+    events[met_name, "phi_raw"] = (
+        ak.ones_like(events[met_name].phi) * events[met_name].phi
     )
-
-    out_parms = out._layout.parameters
-    out_updated = ak.zip(
-        out_dict, depth_limit=1, parameters=out_parms, behavior=out.behavior
-    )
-    events["Tau"] = ak.unflatten(out_updated, counts)
-
-    # Propagate nominal tau pT corrections to MET / PuppiMET
     corrected_met_pt, corrected_met_phi = corrected_polar_met(
         met_pt=events[met_name].pt,
         met_phi=events[met_name].phi,
@@ -209,32 +148,99 @@ def apply_tau_energy_scale_corrections(events, year):
     )
     events[met_name, "pt"] = corrected_met_pt
     events[met_name, "phi"] = corrected_met_phi
+    for i in range(len(shifts)):
+        shifts[i][0]["MET"] = events[met_name]
 
-    # Propagate TES systematic variations (up/down) to MET / PuppiMET
-    met_up_pt, met_up_phi = corrected_polar_met(
-        events[met_name].pt_raw,
-        events[met_name].phi_raw,
-        events.Tau.phi,
-        events.Tau.pt_raw,
-        events.Tau.tau_energy.up.pt,
-    )
-    met_down_pt, met_down_phi = corrected_polar_met(
-        events[met_name].pt_raw,
-        events[met_name].phi_raw,
-        events.Tau.phi,
-        events.Tau.pt_raw,
-        events.Tau.tau_energy.down.pt,
-    )
+    # uncertainties
+    if hasattr(events, "genWeight") and corrections_config["apply_obj_syst"]:
+        tau_up, tau_down = events.Tau, events.Tau
 
-    met_up = ak.with_field(events[met_name], met_up_pt, where="pt")
-    met_up = ak.with_field(met_up, met_up_phi, where="phi")
+        if run == "2":
+            sf_up_valid = cset["tau_energy_scale"].evaluate(
+                pt_valid, eta_valid, dm_valid, genmatch_valid, deep_tau, "up"
+            )
+            sf_down_valid = cset["tau_energy_scale"].evaluate(
+                pt_valid, eta_valid, dm_valid, genmatch_valid, deep_tau, "down"
+            )
+        else:
+            sf_up_valid = cset["tau_energy_scale"].evaluate(
+                pt_valid,
+                eta_valid,
+                dm_valid,
+                genmatch_valid,
+                deep_tau,
+                "Medium",
+                "VVLoose",
+                "up",
+            )
+            sf_down_valid = cset["tau_energy_scale"].evaluate(
+                pt_valid,
+                eta_valid,
+                dm_valid,
+                genmatch_valid,
+                deep_tau,
+                "Medium",
+                "VVLoose",
+                "down",
+            )
 
-    met_down = ak.with_field(events[met_name], met_down_pt, where="pt")
-    met_down = ak.with_field(met_down, met_down_phi, where="phi")
+        # up variation
+        up = ak.flatten(events.Tau)
+        up["pt"] = ak.where(mask, taus_filter.pt_raw * sf_up_valid, flat_taus.pt_raw)
+        up["mass"] = ak.where(
+            mask, taus_filter.mass_raw * sf_up_valid, flat_taus.mass_raw
+        )
+        tau_up = ak.unflatten(up, counts)
 
-    met_tau_systematics = ak.zip(
-        {"up": met_up, "down": met_down}, depth_limit=1, with_name="METSystematic"
-    )
-    events[met_name] = ak.with_field(
-        events[met_name], met_tau_systematics, where="tau_energy"
-    )
+        # down variation
+        down = ak.flatten(events.Tau)
+        down["pt"] = ak.where(
+            mask, taus_filter.pt_raw * sf_down_valid, flat_taus.pt_raw
+        )
+        down["mass"] = ak.where(
+            mask, taus_filter.mass_raw * sf_down_valid, flat_taus.mass_raw
+        )
+        tau_down = ak.unflatten(down, counts)
+
+        # Propagate muon pT changes to MET
+        met_up, met_down = events[met_name], events[met_name]
+        met_up["pt"], met_up["phi"] = corrected_polar_met(
+            events[met_name].pt_raw,
+            events[met_name].phi_raw,
+            tau_up.phi,
+            tau_up.pt_raw,
+            tau_up.pt,
+        )
+        met_down["pt"], met_down["phi"] = corrected_polar_met(
+            events[met_name].pt_raw,
+            events[met_name].phi_raw,
+            tau_down.phi,
+            tau_down.pt_raw,
+            tau_down.pt,
+        )
+
+        shifts += [
+            (
+                {
+                    "Jet": shifts[0][0]["Jet"],
+                    "MET": met_up,
+                    "Muon": shifts[0][0]["Muon"],
+                    "Electron": shifts[0][0]["Electron"],
+                    "Tau": tau_up,
+                },
+                f"CMS_t_energy_{year[:4]}Up",
+            )
+        ]
+        shifts += [
+            (
+                {
+                    "Jet": shifts[0][0]["Jet"],
+                    "MET": met_down,
+                    "Muon": shifts[0][0]["Muon"],
+                    "Electron": shifts[0][0]["Electron"],
+                    "Tau": tau_down,
+                },
+                f"CMS_t_energy_{year[:4]}Down",
+            )
+        ]
+    return shifts

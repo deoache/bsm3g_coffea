@@ -81,18 +81,17 @@ def object_corrector_manager(events, year, run, dataset, workflow_config):
                 shifts[i][0]["Electron"] = events.Electron
 
         if "taus" in objcorr_config:
-            if run == "2":
-                if hasattr(events, "genWeight"):
-                    # apply energy corrections to taus (only to MC)
-                    shifts = apply_tau_energy_scale_corrections(
-                        events,
-                        year=year,
-                        shifts=shifts,
-                        corrections_config=workflow_config.corrections_config,
-                    )
-                else:
-                    for i in range(len(shifts)):
-                        shifts[i][0]["Tau"] = events.Tau
+            if hasattr(events, "genWeight"):
+                # apply energy corrections to taus (only to MC)
+                shifts = apply_tau_energy_scale_corrections(
+                    events,
+                    year=year,
+                    shifts=shifts,
+                    corrections_config=workflow_config.corrections_config,
+                )
+            else:
+                for i in range(len(shifts)):
+                    shifts[i][0]["Tau"] = events.Tau
         else:
             for i in range(len(shifts)):
                 shifts[i][0]["Tau"] = events.Tau
