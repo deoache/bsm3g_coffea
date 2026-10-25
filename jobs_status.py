@@ -487,6 +487,7 @@ def update_input_filesets_for_group(
 
     # Run fetch.py once for the entire dataset group.
     print("Running fetch.py for this group...")
+    samples_str = " ".join(datasets)
     subprocess.run(
         [
             "python3",
@@ -494,12 +495,12 @@ def update_input_filesets_for_group(
             "--year",
             year,
             "--samples",
-            *datasets,
+            samples_str,
+            "--skip_site",
         ],
-        check=True,
+        check=False,
     )
-
-    # Load the created filesets
+    # Load the regenerated filesets.
     fileset_path = fileset_dir / f"fileset_{year}_NANO_lxplus.json"
     all_filesets = json.loads(fileset_path.read_text())
 
