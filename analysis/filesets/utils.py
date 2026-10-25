@@ -5,24 +5,30 @@ import json
 import subprocess
 import numpy as np
 from pathlib import Path
+from collections import defaultdict
 from analysis.workflows.config import WorkflowConfigBuilder
 
 
-def get_rootfiles(year: str, dataset: str):
-    main_dir = Path.cwd()
-    fileset_path = Path(f"{main_dir}/analysis/filesets")
-    with open(f"{fileset_path}/{year}_fileset.yaml", "r") as f:
+def get_rootfiles(year: str, dataset: str) -> list[str]:
+    """Return ROOT files found in the dataset directory or its subdirectories."""
+    fileset_path = Path.cwd() / "analysis" / "filesets"
+
+    with (fileset_path / f"{year}_fileset.yaml").open() as f:
         dataset_config = yaml.safe_load(f)[dataset]
-    # check for .root files in the specified path
-    root_files = glob.glob(f"{dataset_config['path']}/*.root")
+
+    dataset_path = Path(dataset_config["path"])
+    root_files = sorted(dataset_path.glob("*.root"))
+
     if not root_files:
-        # if no files found, check in the subdirectories
-        root_files = glob.glob(f"{dataset_config['path']}/*/*.root")
-    elif not root_files:
+        root_files = sorted(dataset_path.glob("*/*.root"))
+
+    if not root_files:
         raise FileNotFoundError(
-            f"No .root files found in {dataset_config['path']} or its subdirectories."
+            f"No .root files found in {dataset_path} "
+            "or its immediate subdirectories."
         )
-    return root_files
+
+    return [str(path) for path in root_files]
 
 
 def divide_list(lst: list, nfiles: int = 20) -> list:
@@ -110,83 +116,499 @@ def modify_site_list(year: str, site: str, status: str) -> None:
         yaml.dump(data, f, default_flow_style=False)
 
 
-def extract_xrootd_errors(error_files: list) -> tuple[set, bool]:
+def get_dataset_partition(content, partitions):
     """
-    Analyze XRootD error logs to identify failing endpoints and executor errors.
-
-    The function distinguishes between two types of failures:
-    - Read errors: logs containing XRootD endpoints, which can be mapped to
-      sites and used by the existing site-blacklisting workflow.
-    - Authentication or connection errors: logs containing known XRootD
-      authentication or connection failure messages. These errors indicate
-      that the executor may need to be changed to ``iterative``.
-
-    Logs identified as authentication or connection failures are not used
-    to extract endpoints. This is appropriate when these logs do not contain
-    endpoint information, as observed in the current workflow.
+    Retrieve the partition entry corresponding to the dataset in a log.
 
     Parameters
     ----------
-    error_files : list[pathlib.Path]
-        Paths to the Condor error log files to analyze for a single dataset.
+    content : str
+        Contents of a Condor error log.
+    partitions : dict
+        Partition information loaded from partitions.json.
 
     Returns
     -------
-    tuple[set, bool]
-        A tuple containing:
+    dict or None
+        Dataset partition entry, or None if the dataset cannot be found.
+    """
+    dataset_match = re.search(
+        r"""--dataset(?:=|\s+)['"]?([^\s'"]+)""",
+        content,
+    )
 
-        - endpoints (set[str]): Unique XRootD endpoints extracted from logs
-          that do not match the authentication or connection error patterns.
-          These endpoints can subsequently be mapped to sites.
-        - has_auth_or_connection_error (bool): ``True`` if at least one log
-          contains a recognized authentication or connection error; otherwise
-          ``False``.
+    if not dataset_match:
+        return None
 
-    Notes
-    -----
-    The function recognizes the following error messages:
-    - ``Auth failed``
-    - ``No protocols left to try``
-    - ``[FATAL] Connection error``
-    - ``[FATAL] TLS error``
+    dataset = dataset_match.group(1)
 
-    Error matching is case-insensitive. Endpoint extraction recognizes URLs
-    in the form ``root://hostname`` or ``root://hostname:port``.
+    partition = next(
+        (
+            partition_data[dataset]
+            for partition_data in partitions.values()
+            if dataset in partition_data
+        ),
+        None,
+    )
 
-    The function only identifies error types and extracts endpoints; it
-    does not modify input filesets, update executor settings, or resubmit jobs.
-    Those actions are handled by the calling workflow.
+    if partition is None:
+        print(f"[{dataset}] Dataset not found in partitions.json")
+
+    return partition
+
+
+def extract_file_error_endpoints(content, partitions):
+    """
+    Identify XRootD endpoints associated with ROOT files mentioned in errors.
+
+    ROOT filenames are matched against the files in the dataset partition.
+    Matching is based on the basename, allowing the same file to be
+    identified even when the error and partition use different storage paths.
+
+    Parameters
+    ----------
+    content : str
+        Contents of a Condor error log.
+    partitions : dict
+        Partition information loaded from partitions.json.
+
+    Returns
+    -------
+    set[str]
+        Endpoints associated with the ROOT files mentioned in the errors.
     """
     endpoints = set()
-    has_auth_or_connection_error = False
+    partition = get_dataset_partition(content, partitions)
 
-    endpoint_pattern = r"root://[a-zA-Z0-9\-.]+(?::\d+)?"
-    executor_error_patterns = [
-        r"Auth failed",
-        r"No protocols left to try",
-        r"\[FATAL\]\s*Connection error",
-        r"\[FATAL\]\s*TLS error",
-    ]
+    if partition is None:
+        return endpoints
 
-    for error_file in error_files:
-        content = error_file.read_text(errors="replace")
+    # Extract ROOT filenames appearing in the error log.
+    root_file_pattern = r"""[^\s"'<>;]+\.root\b"""
 
-        if any(
-            re.search(pattern, content, flags=re.IGNORECASE)
-            for pattern in executor_error_patterns
-        ):
-            has_auth_or_connection_error = True
+    failing_files = re.findall(
+        root_file_pattern,
+        content,
+        flags=re.IGNORECASE,
+    )
+
+    for failing_file in failing_files:
+        filename = failing_file.rsplit("/", 1)[-1]
+
+        matching_urls = [
+            url for url in partition["files"] if url.rsplit("/", 1)[-1] == filename
+        ]
+
+        if not matching_urls:
             continue
 
-        endpoints.update(
-            re.findall(
-                endpoint_pattern,
-                content,
+        for url in matching_urls:
+            match = re.match(ENDPOINT_PATTERN, url, flags=re.IGNORECASE)
+
+            if match:
+                endpoints.add(match.group())
+
+    return endpoints
+
+
+def get_partition_endpoints(content, partitions):
+    """
+    Return all unique XRootD endpoints in the dataset partition.
+
+    This is the fallback when an error is detected but its specific
+    failing site cannot be identified from the log.
+    """
+    endpoints = set()
+    partition = get_dataset_partition(content, partitions)
+
+    if partition is None:
+        return endpoints
+
+    for url in partition["files"]:
+        match = re.match(ENDPOINT_PATTERN, url, flags=re.IGNORECASE)
+
+        if match:
+            endpoints.add(match.group())
+
+    return endpoints
+
+
+ENDPOINT_PATTERN = r"root://[a-zA-Z0-9._-]+(?::\d+)?"
+
+EXECUTOR_ERROR_PATTERNS = {
+    "Authentication": [
+        r"Auth failed",
+        r"No protocols left to try",
+    ],
+    "Connection": [
+        r"\[FATAL\]\s*Connection error",
+        r"Connection reset",
+        r"Connection refused",
+        r"Network is unreachable",
+        r"XRootD error:.*Connection error",
+        r"\bConnectionError\b",
+    ],
+    "TLS": [
+        r"\bTLS error\b",
+        r"SSL error",
+    ],
+}
+
+FILE_ERROR_PATTERNS = {
+    "File access / permission": [
+        r"\[3010\]\s*Unable to open file",
+        r"Unable to open file",
+        r"Failed to open file",
+        r"Error opening file",
+        r"Operation not permitted",
+        r"Permission denied",
+    ],
+    "File not found": [
+        r"File not found",
+        r"No such file or directory",
+        r"\bFileNotFoundError\b",
+    ],
+    "Read error": [
+        r"Read error",
+        r"Input/output error",
+        r"\bIOError\b",
+    ],
+    "Timeout": [
+        r"Operation expired",
+        r"timed?\s*out",
+        r"\btimeout\b",
+        r"\bTimeoutError\b",
+    ],
+    "Socket / network": [
+        r"Socket error",
+        r"XrdCl::",
+    ],
+    "Other I/O error": [
+        r"\bOSError\b",
+        r"XRootD error",
+    ],
+}
+
+
+def identify_error_types(content):
+    """Identify recognized error types in a log's contents."""
+    error_types = set()
+
+    for error_type, patterns in {
+        **EXECUTOR_ERROR_PATTERNS,
+        **FILE_ERROR_PATTERNS,
+    }.items():
+        if any(
+            re.search(pattern, content, flags=re.IGNORECASE) for pattern in patterns
+        ):
+            error_types.add(error_type)
+
+    return error_types
+
+
+def get_dataset_partition_entries(partitions, dataset):
+    """
+    Return partition entries belonging to the specified dataset.
+
+    Supports sample names such as 'dataset' and 'dataset_1', 'dataset_2'.
+    """
+    entries = []
+
+    sample_pattern = re.compile(rf"{re.escape(dataset)}_\d+")
+
+    for partition_id, partition_data in partitions.items():
+        for sample_name, sample_data in partition_data.items():
+            if sample_name == dataset or sample_pattern.fullmatch(sample_name):
+                entries.append((str(partition_id), sample_name, sample_data))
+
+    return entries
+
+
+def extract_root_filenames(content):
+    """Extract ROOT filenames mentioned in a log."""
+    paths = re.findall(
+        r"""[^\s"'<>;]+\.root\b""",
+        content,
+        flags=re.IGNORECASE,
+    )
+
+    return {path.rstrip(".,:)").rsplit("/", 1)[-1] for path in paths}
+
+
+def extract_file_error_endpoints(content, partitions, dataset):
+    """
+    Match ROOT filenames in a log to files in dataset partitions.
+
+    Returns
+    -------
+    tuple[set[str], set[str]]
+        Identified XRootD endpoints and partition IDs.
+    """
+    endpoints = set()
+    partition_ids = set()
+    filenames = extract_root_filenames(content)
+
+    if not filenames:
+        return endpoints, partition_ids
+
+    for partition_id, _, sample_data in get_dataset_partition_entries(
+        partitions, dataset
+    ):
+        for url in sample_data.get("files", {}):
+            filename = url.rsplit("/", 1)[-1]
+
+            if filename not in filenames:
+                continue
+
+            match = re.match(
+                ENDPOINT_PATTERN,
+                url,
                 flags=re.IGNORECASE,
             )
-        )
 
-    return endpoints, has_auth_or_connection_error
+            if match:
+                endpoints.add(match.group())
+                partition_ids.add(partition_id)
+
+    return endpoints, partition_ids
+
+
+def get_failed_job_partitions(content, partitions, dataset):
+    """
+    Identify partition IDs associated with dataset arguments in a log.
+
+    Supports sample names such as 'dataset', 'dataset_1', and 'dataset_2'.
+    If the base dataset name is supplied, all matching partition IDs are
+    returned.
+    """
+    sample_partitions = defaultdict(set)
+
+    for partition_id, partition_data in partitions.items():
+        for sample_name in partition_data:
+            sample_partitions[sample_name].add(str(partition_id))
+
+    matches = re.findall(
+        r"""--dataset(?:=|\s+)['"]?([^'"\s]+)""",
+        content,
+    )
+
+    partition_ids = set()
+
+    for sample_name in matches:
+        if sample_name in sample_partitions:
+            partition_ids.update(sample_partitions[sample_name])
+        elif sample_name == dataset:
+            for sample_name_in_partitions, ids in sample_partitions.items():
+                if sample_name_in_partitions == dataset or re.fullmatch(
+                    rf"{re.escape(dataset)}_\d+",
+                    sample_name_in_partitions,
+                ):
+                    partition_ids.update(ids)
+
+    return partition_ids
+
+
+def get_partition_endpoints(partitions, dataset):
+    """
+    Collect all XRootD endpoints and partition IDs for a dataset.
+    """
+    endpoints = set()
+    partition_ids = set()
+
+    for partition_id, _, sample_data in get_dataset_partition_entries(
+        partitions, dataset
+    ):
+        for url in sample_data.get("files", {}):
+            match = re.match(
+                ENDPOINT_PATTERN,
+                url,
+                flags=re.IGNORECASE,
+            )
+
+            if match:
+                endpoints.add(match.group())
+                partition_ids.add(partition_id)
+
+    return endpoints, partition_ids
+
+
+def find_endpoint_partitions(endpoints, partitions, dataset):
+    """Find partitions containing any of the specified endpoints."""
+    partition_ids = set()
+
+    for partition_id, _, sample_data in get_dataset_partition_entries(
+        partitions, dataset
+    ):
+        for url in sample_data.get("files", {}):
+            match = re.match(
+                ENDPOINT_PATTERN,
+                url,
+                flags=re.IGNORECASE,
+            )
+
+            if match and match.group().lower() in {
+                endpoint.lower() for endpoint in endpoints
+            }:
+                partition_ids.add(partition_id)
+
+    return partition_ids
+
+
+def get_failed_job_partitions(content, partitions, dataset):
+    """
+    Identify partition IDs associated with a failed job from its log.
+
+    The job command is expected to contain the sample name passed through
+    the --dataset argument.
+    """
+    sample_names = {
+        sample_name: str(partition_id)
+        for partition_id, partition_data in partitions.items()
+        for sample_name in partition_data
+    }
+
+    matches = re.findall(
+        r"--dataset(?:=|\s+)([^\s]+)",
+        content,
+    )
+
+    partition_ids = set()
+
+    for sample_name in matches:
+        if sample_name in sample_names:
+            partition_ids.add(sample_names[sample_name])
+        elif sample_name == dataset:
+            partition_ids.update(
+                str(partition_id)
+                for partition_id, partition_data in partitions.items()
+                if dataset in partition_data
+            )
+
+    return partition_ids
+
+
+def get_missing_job_partitions(job_dir, dataset):
+    """
+    Return the partition IDs listed in the dataset's missing.txt file.
+
+    Parameters
+    ----------
+    job_dir : str or pathlib.Path
+        Root directory containing the dataset subdirectories.
+    dataset : str
+        Dataset name.
+
+    Returns
+    -------
+    set[str]
+        IDs of the currently missing jobs/partitions.
+    """
+    missing_path = job_dir / dataset / "missing.txt"
+
+    if not missing_path.is_file():
+        return set()
+
+    return {
+        line.strip() for line in missing_path.read_text().splitlines() if line.strip()
+    }
+
+
+def analyze_xrootd_error_logs(
+    error_files,
+    job_dir,
+    dataset,
+    verbose=False,
+):
+    """
+    Analyze XRootD errors and identify endpoints from logs or missing partitions.
+
+    Endpoint discovery follows this order:
+      1. Extract endpoints directly from recent .err logs.
+      2. If no endpoints are found, extract endpoints from the files assigned
+         to the partitions listed in missing.txt.
+
+    Parameters
+    ----------
+    error_files : iterable
+        Paths to Condor error logs.
+    job_dir : str or pathlib.Path
+        Root directory containing the dataset subdirectories.
+    dataset : str
+        Dataset name.
+    verbose : bool, optional
+        Print detailed diagnostics.
+
+    Returns
+    -------
+    dict
+        Contains sets of endpoints, error types, and missing partition IDs.
+    """
+    dataset_dir = Path(job_dir) / dataset
+    partitions_path = dataset_dir / "partitions.json"
+
+    missing_partition_ids = get_missing_job_partitions(
+        Path(job_dir),
+        dataset,
+    )
+
+    if partitions_path.is_file():
+        partitions_data = json.loads(partitions_path.read_text())
+    else:
+        partitions_data = {}
+
+        if verbose:
+            print(f"[{dataset}] Missing partitions.json: {partitions_path}")
+
+    endpoint_pattern = re.compile(
+        r"root://[a-zA-Z0-9._-]+(?::\d+)?",
+        flags=re.IGNORECASE,
+    )
+
+    endpoints = set()
+    error_types = set()
+
+    # Search the error logs first.
+    for error_file in error_files:
+        error_file = Path(error_file)
+
+        try:
+            content = error_file.read_text(errors="replace")
+        except OSError as exc:
+            if verbose:
+                print(f"[{dataset}] Could not read {error_file}: {exc}")
+            continue
+
+        endpoints.update(endpoint_pattern.findall(content))
+        error_types.update(identify_error_types(content))
+
+    # Fall back to endpoints associated with currently missing partitions.
+    if not endpoints:
+        for partition_id in missing_partition_ids:
+            partition_data = partitions_data.get(str(partition_id), {})
+
+            for sample_data in partition_data.values():
+                for url in sample_data.get("files", {}):
+                    match = endpoint_pattern.match(url)
+
+                    if match:
+                        endpoints.add(match.group(0))
+
+        if verbose:
+            print(
+                f"[{dataset}] Endpoint fallback from missing partitions: "
+                f"{sorted(endpoints)}"
+            )
+
+    if verbose:
+        print(f"[{dataset}] Error types: {sorted(error_types)}")
+        print(f"[{dataset}] Endpoints: {sorted(endpoints)}")
+        print(f"[{dataset}] Missing partitions: " f"{sorted(missing_partition_ids)}")
+
+    return {
+        "endpoints": endpoints,
+        "error_types": error_types,
+        "partitions": missing_partition_ids,
+    }
 
 
 def get_datasets_map(year: str):
