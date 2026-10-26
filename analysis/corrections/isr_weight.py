@@ -1,3 +1,4 @@
+import re
 import copy
 import correctionlib
 import awkward as ak
@@ -15,14 +16,14 @@ def getParticles(
 
 
 def add_isr_weight(events, weights, year, variation, dataset, fit, one_dim, workflow):
+    ds = None
     if "zplusjets" in workflow or "zto" in workflow:
-        ds = "DYJetsToLL"
+        ds = "DY"
     elif "wplusjets" in workflow:
         ds = "WJets"
 
-    if dataset.startswith(ds):
-
-        # load correction set and compute SF
+    if ds is not None and dataset.lower().startswith(ds.lower()):
+        # Load correction set and compute SF
         if one_dim:
             fname = f"{Path.cwd()}/analysis/data/{year}_ztomumu_isr_weight_1d"
         else:
@@ -32,18 +33,18 @@ def add_isr_weight(events, weights, year, variation, dataset, fit, one_dim, work
         fname += ".json.gz"
         cset = correctionlib.CorrectionSet.from_file(fname)
 
-        # select transverse momemntum
-        if ds == "DYJetsToLL":
-            # for DY+jets, select dimuon pT
+        # Select transverse momentum
+        if ds == "DY":
+            # For DY+jets, select dimuon pT
             pt = ak.firsts(events.selected_dimuons.pt)
         else:
-            # for W+jets, select gen-level W(-> mu nu) pT
+            # For W+jets, select gen-level W(-> mu nu) pT
             ws = getParticles(events.GenPart, 24)
             is_from_munu = ak.sum(ak.firsts(np.abs(ws.children.pdgId)), axis=1) == 27
             ws = ws.mask[is_from_munu]
             pt = ak.firsts(ws.pt)
 
-        # select number of jets
+        # Select number of jets
         njet = ak.num(events.selected_jets)
 
         none_mask = ak.is_none(pt) | ak.is_none(njet)
@@ -55,7 +56,7 @@ def add_isr_weight(events, weights, year, variation, dataset, fit, one_dim, work
         else:
             sf = cset["isr_weight"].evaluate(selected_pt, selected_njet)
 
-        # add weight to weights container
+        # Add weight to weights container
         weights.add(
             name="isr_weight",
             weight=ak.where(none_mask, ak.ones_like(sf), sf),
