@@ -53,6 +53,7 @@ event_selection:
     trigger: get_trigger_mask(events, hlt_paths, dataset, year)
     trigger_match: get_trigger_match_mask(events, hlt_paths, year, events.Muon)
     lumi: get_lumi_mask(events, year)
+    metfilters: get_metfilters_mask(events, year)
     goodvertex: events.PV.npvsGood > 0
     two_muons: ak.num(objects['muons']) == 2
     one_dimuon: ak.num(objects['dimuons']) == 1
@@ -66,6 +67,7 @@ event_selection:
       - lumi
       - trigger
       - trigger_match
+      - metfilters
       - two_muons
       - leading_muon_pt
       - subleading_muon_pt

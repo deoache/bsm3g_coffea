@@ -60,6 +60,7 @@ event_selection:
     trigger: get_trigger_mask(events, hlt_paths, dataset, year)
     trigger_match: get_trigger_match_mask(events, hlt_paths, year, events.Muon)
     lumi: get_lumi_mask(events, year)
+    metfilters: get_metfilters_mask(events, year)
     dy_stitching: get_stitching_mask(events, dataset, 'DYJetsToLL_inclusive', 40)
     w_stitching: get_stitching_mask(events, dataset, 'WJetsToLNu_inclusive', 40)
     goodvertex: events.PV.npvsGood > 0
@@ -75,6 +76,7 @@ event_selection:
       - lumi
       - trigger
       - trigger_match
+      - metfilters
       - dy_stitching
       - w_stitching
       - two_muons
