@@ -7,6 +7,7 @@ import argparse
 import subprocess
 import numpy as np
 import pandas as pd
+import awkward as ak
 from pathlib import Path
 from collections import defaultdict
 from coffea.util import save, load
@@ -111,9 +112,7 @@ def parse_arguments():
         action="store_true",
         help="Enable saving of sample/process sample histograms",
     )
-    parser.add_argument(
-        "--report", action="store_true", help="Enable results report"
-    )
+    parser.add_argument("--report", action="store_true", help="Enable results report")
     parser.add_argument(
         "--kfactor", action="store_true", help="Enable k factor addition to xsec"
     )
@@ -279,7 +278,10 @@ if __name__ == "__main__":
             dataset_map = get_datasets_map(args.year)
 
             scale_histograms_by_key = {}
+            workflow_keys = workflow_config.datasets.values()
             for dataset_key in dataset_map:
+                if dataset_key not in ak.flatten(workflow_keys):
+                    continue
                 logging.info(f"Processing {dataset_key}")
                 scale_histograms_by_key[dataset_key] = []
                 for sample in scaled_histograms:
