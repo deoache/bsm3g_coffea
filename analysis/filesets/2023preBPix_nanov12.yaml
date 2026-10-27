@@ -212,11 +212,11 @@ DYJetsToLL_4to50_HT40to70:
   era: MC
   query: DYto2L-4Jets_MLL-120_HT-40to70_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23NanoAODv12-130X_mcRun3_2023_realistic_v15-v2/NANOAODSIM
   process: DYJetsToLL
-  key: none
+  key: null
   xsec: 911.4
 DYJetsToLL_4to50_HT70to100:
   era: MC
-  query: DYto2L-4Jets_MLL-4to50_HT-40to70_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23NanoAODv12-130X_mcRun3_2023_realistic_v15-v3/NANOAODSIM
+  query: DYto2L-4Jets_MLL-4to50_HT-70to100_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23NanoAODv12-130X_mcRun3_2023_realistic_v15-v4/NANOAODSIM
   process: DYJetsToLL
   key: dy_ht
   xsec: 346.6
@@ -254,7 +254,7 @@ DYJetsToLL_50to120_HT40to70:
   era: MC
   query: DYto2L-4Jets_MLL-50to120_HT-40to70_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23NanoAODv12-130X_mcRun3_2023_realistic_v14-v3/NANOAODSIM
   process: DYJetsToLL
-  key: dy_ht
+  key: null
   xsec: 316.7
 DYJetsToLL_50to120_HT70to100:
   era: MC
@@ -296,7 +296,7 @@ DYJetsToLL_120_HT40to70:
   era: MC
   query: DYto2L-4Jets_MLL-120_HT-40to70_TuneCP5_13p6TeV_madgraphMLM-pythia8/Run3Summer23NanoAODv12-130X_mcRun3_2023_realistic_v15-v2/NANOAODSIM
   process: DYJetsToLL
-  key: dy_ht
+  key: null
   xsec: 4.6
 DYJetsToLL_120_HT70to100:
   era: MC
