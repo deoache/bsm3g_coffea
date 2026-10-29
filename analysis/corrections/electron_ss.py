@@ -1,7 +1,9 @@
+import copy
 import correctionlib
 import numpy as np
 import awkward as ak
 from pathlib import Path
+from analysis.corrections import correction_files
 from analysis.corrections.met import corrected_polar_met
 
 
@@ -57,14 +59,9 @@ def apply_electron_ss_corrections(
 
     https://gitlab.cern.ch/cms-analysis-corrections/EGM/examples/-/blob/latest/egmScaleAndSmearingExample.py
     """
-    electron_ss_files = {
-        "2022preEE": "/cvmfs/cms-griddata.cern.ch/cat/metadata/EGM/Run3-22CDSep23-Summer22-NanoAODv12/latest/electronSS_EtDependent.json.gz",
-        "2022postEE": "/cvmfs/cms-griddata.cern.ch/cat/metadata/EGM/Run3-22EFGSep23-Summer22EE-NanoAODv12/latest/electronSS_EtDependent.json.gz",
-        "2023preBPix": "/cvmfs/cms-griddata.cern.ch/cat/metadata/EGM/Run3-23CSep23-Summer23-NanoAODv12/latest/electronSS_EtDependent.json.gz",
-        "2023postBPix": "/cvmfs/cms-griddata.cern.ch/cat/metadata/EGM/Run3-23DSep23-Summer23BPix-NanoAODv12/latest/electronSS_EtDependent.json.gz",
-        "2024": "/cvmfs/cms-griddata.cern.ch/cat/metadata/EGM/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/electronSS_EtDependent.json.gz",
-    }
-    cset = correctionlib.CorrectionSet.from_file(electron_ss_files[year])
+    cset = correctionlib.CorrectionSet.from_file(correction_files["electron_ss"][year])
+
+    events["Electron", "pt_raw"] = ak.ones_like(events.Electron.pt) * events.Electron.pt
     electrons = events.Electron
     counts = ak.num(events.Electron)
 
@@ -96,37 +93,85 @@ def apply_electron_ss_corrections(
     for i in range(len(shifts)):
         shifts[i][0]["Electron"] = electrons
 
+    # Propagate tau pT changes to MET
+    nominal_met, met = copy.copy(shifts[0][0]["MET"]), copy.copy(shifts[0][0]["MET"])
+    corrected_met_pt, corrected_met_phi = corrected_polar_met(
+        met_pt=nominal_met.pt,
+        met_phi=nominal_met.phi,
+        other_phi=electrons.phi,
+        other_pt_old=electrons.pt_raw,
+        other_pt_new=electrons.pt,
+    )
+    nominal_met["pt"] = corrected_met_pt
+    nominal_met["phi"] = corrected_met_phi
+    # update nominal MET
+    shifts[0][0]["MET"] = nominal_met
+
     # scale and smearing uncertainties should be evaluated on the original MC only
-    if hasattr(events, "genWeight") and corrections_config["apply_obj_syst"]:
+    if corrections_config["apply_obj_syst"]:
         ele_smear_up, ele_smear_down = events.Electron, events.Electron
         ele_scale_up, ele_scale_down = events.Electron, events.Electron
 
-        # Obtain the uncertainty on the smearing width using MC original variables (pt, r9, and ScEta).
-        unc_smear = cset["SmearAndSyst"].evaluate("smear", pt, r9, sceta)
-        smear_up = cset["SmearAndSyst"].evaluate("smear", pt, r9, sceta)
-        smear_down = cset["SmearAndSyst"].evaluate("smear", pt, r9, sceta)
+        if hasattr(events, "genWeight"):
+            # Obtain the uncertainty on the smearing width using MC original variables (pt, r9, and ScEta).
+            unc_smear = cset["SmearAndSyst"].evaluate("smear", pt, r9, sceta)
+            smear_up = cset["SmearAndSyst"].evaluate("smear", pt, r9, sceta)
+            smear_down = cset["SmearAndSyst"].evaluate("smear", pt, r9, sceta)
 
-        # In 2022, the "smear_down" variation can lead to negative smearing width in some cases, which is unphysical.
-        # Therefore, we use max(smear - unc_smear, 0) to ensure the smearing width is non-negative.
-        smearing_up = 1 + smear_up * random_numbers
-        smearing_down = 1 + smear_down * random_numbers
+            # In 2022, the "smear_down" variation can lead to negative smearing width in some cases, which is unphysical.
+            # Therefore, we use max(smear - unc_smear, 0) to ensure the smearing width is non-negative.
+            smearing_up = 1 + smear_up * random_numbers
+            smearing_down = 1 + smear_down * random_numbers
 
-        ele_smear_up["pt"] = ak.unflatten(pt * smearing_up, counts)
-        ele_smear_down["pt"] = ak.unflatten(pt * smearing_down, counts)
+            ele_smear_up["pt"] = ak.unflatten(pt * smearing_up, counts)
+            ele_smear_down["pt"] = ak.unflatten(pt * smearing_down, counts)
 
-        # the scale uncertainty, is also evaluated on MC original variables (pt, r9, and ScEta) BUT applied on the smeared pt
-        unc_scale = cset["SmearAndSyst"].evaluate("escale", pt, r9, sceta)
-        scale_up = cset["SmearAndSyst"].evaluate("scale_up", pt, r9, sceta)
-        scale_down = cset["SmearAndSyst"].evaluate("scale_down", pt, r9, sceta)
+            # the scale uncertainty, is also evaluated on MC original variables (pt, r9, and ScEta) BUT applied on the smeared pt
+            unc_scale = cset["SmearAndSyst"].evaluate("escale", pt, r9, sceta)
+            scale_up = cset["SmearAndSyst"].evaluate("scale_up", pt, r9, sceta)
+            scale_down = cset["SmearAndSyst"].evaluate("scale_down", pt, r9, sceta)
 
-        ele_scale_up["pt"] = ak.unflatten(scale_up * pt_corrected, counts)
-        ele_scale_down["pt"] = ak.unflatten(scale_down * pt_corrected, counts)
+            ele_scale_up["pt"] = ak.unflatten(scale_up * pt_corrected, counts)
+            ele_scale_down["pt"] = ak.unflatten(scale_down * pt_corrected, counts)
+
+        # Propagate tau pT changes to MET
+        met_scale_up, met_scale_down = met, met
+        met_scale_up["pt"], met_scale_up["phi"] = corrected_polar_met(
+            met_pt=met_scale_up.pt,
+            met_phi=met_scale_up.phi,
+            other_phi=ele_scale_up.phi,
+            other_pt_old=ele_scale_up.pt_raw,
+            other_pt_new=ele_scale_up.pt,
+        )
+        met_scale_down["pt"], met_scale_down["phi"] = corrected_polar_met(
+            met_pt=met_scale_down.pt,
+            met_phi=met_scale_down.phi,
+            other_phi=ele_scale_down.phi,
+            other_pt_old=ele_scale_down.pt_raw,
+            other_pt_new=ele_scale_down.pt,
+        )
+
+        met_smear_up, met_smear_down = met, met
+        met_smear_up["pt"], met_smear_up["phi"] = corrected_polar_met(
+            met_pt=met_smear_up.pt,
+            met_phi=met_smear_up.phi,
+            other_phi=ele_smear_up.phi,
+            other_pt_old=ele_smear_up.pt_raw,
+            other_pt_new=ele_smear_up.pt,
+        )
+        met_smear_down["pt"], met_smear_down["phi"] = corrected_polar_met(
+            met_pt=met_smear_down.pt,
+            met_phi=met_smear_down.phi,
+            other_phi=ele_smear_down.phi,
+            other_pt_old=ele_smear_down.pt_raw,
+            other_pt_new=ele_smear_down.pt,
+        )
 
         shifts += [
             (
                 {
                     "Jet": shifts[0][0]["Jet"],
-                    "MET": shifts[0][0]["MET"],
+                    "MET": met_scale_up,
                     "Muon": shifts[0][0]["Muon"],
                     "Electron": ele_scale_up,
                 },
@@ -137,7 +182,7 @@ def apply_electron_ss_corrections(
             (
                 {
                     "Jet": shifts[0][0]["Jet"],
-                    "MET": shifts[0][0]["MET"],
+                    "MET": met_scale_down,
                     "Muon": shifts[0][0]["Muon"],
                     "Electron": ele_scale_down,
                 },
@@ -148,7 +193,7 @@ def apply_electron_ss_corrections(
             (
                 {
                     "Jet": shifts[0][0]["Jet"],
-                    "MET": shifts[0][0]["MET"],
+                    "MET": met_smear_up,
                     "Muon": shifts[0][0]["Muon"],
                     "Electron": ele_smear_up,
                 },
@@ -159,7 +204,7 @@ def apply_electron_ss_corrections(
             (
                 {
                     "Jet": shifts[0][0]["Jet"],
-                    "MET": shifts[0][0]["MET"],
+                    "MET": met_smear_down,
                     "Muon": shifts[0][0]["Muon"],
                     "Electron": ele_smear_down,
                 },

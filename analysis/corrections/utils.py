@@ -17,7 +17,7 @@ from correctionlib.schemav2 import Correction, CorrectionSet
 # CorrectionLib files are available from
 POG_CORRECTION_PATH = "/cvmfs/cms.cern.ch/rsync/cms-nanoAOD/jsonpog-integration"
 
-# summary of pog scale factors: https://cms-nanoaod-integration.web.cern.ch/commonJSONSFs/
+# summary of pog scale factors: https://cms-analysis-corrections.docs.cern.ch/
 POG_JSONS = {
     "muon": ["MUO", "muon_Z.json.gz"],
     "muon_highpt": ["MUO", "muon_HighPt.json.gz"],

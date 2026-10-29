@@ -8,7 +8,7 @@ from typing import Type
 from pathlib import Path
 from .utils import unflat_sf
 from coffea.analysis_tools import Weights
-from analysis.corrections.utils import pog_years, get_pog_json, get_electron_hlt_json
+from analysis.corrections import correction_files
 
 
 class ElectronCorrector:
@@ -47,7 +47,7 @@ class ElectronCorrector:
 
         # define correction set
         self.cset = correctionlib.CorrectionSet.from_file(
-            get_pog_json(json_name="electron", year=year)
+            correction_files["electron"][year]
         )
         self.year = year
         year_key_map = {
@@ -322,7 +322,7 @@ class ElectronCorrector:
 
             if self.run_key == "Run3":
                 cset = correctionlib.CorrectionSet.from_file(
-                    get_pog_json(json_name="electron_hlt", year=self.year)
+                    correction_files["electron_hlt"][self.year]
                 )
                 sf = cset["Electron-HLT-SF"].evaluate(
                     self.year_map[self.year],
@@ -337,7 +337,7 @@ class ElectronCorrector:
 
             elif self.run_key == "Run2":
                 cset = correctionlib.CorrectionSet.from_file(
-                    get_electron_hlt_json("SF", self.year)
+                    correction_files["electron_hlt_sf"][self.year]
                 )
                 sf = cset[f"HLT_SF_{run2_hlt_paths[self.year]}_MVAiso80ID"].evaluate(
                     electron_eta, electron_pt
@@ -351,7 +351,7 @@ class ElectronCorrector:
             if self.run_key == "Run3":
                 # for double electron events, compute SF from electrons' efficiencies
                 cset = correctionlib.CorrectionSet.from_file(
-                    get_pog_json(json_name="electron_hlt", year=self.year)
+                    correction_files["electron_hlt"][self.year]
                 )
                 data_eff = cset["Electron-HLT-DataEff"].evaluate(
                     self.year_map[self.year],
@@ -393,7 +393,7 @@ class ElectronCorrector:
 
             elif self.run_key == "Run2":
                 cset = correctionlib.CorrectionSet.from_file(
-                    get_electron_hlt_json("DataEff", self.year)
+                    correction_files["electron_hlt_dataeff"][self.year]
                 )
                 data_eff = cset[
                     f"HLT_DataEff_{run2_hlt_paths[self.year]}_MVAiso80ID"
@@ -410,7 +410,7 @@ class ElectronCorrector:
                 full_data_eff = ak.fill_none(full_data_eff, 1)
 
                 cset = correctionlib.CorrectionSet.from_file(
-                    get_electron_hlt_json("MCEff", self.year)
+                    correction_files["electron_hlt_mceff"][self.year]
                 )
                 mc_eff = cset[
                     f"HLT_MCEff_{run2_hlt_paths[self.year]}_MVAiso80ID"

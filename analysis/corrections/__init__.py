@@ -1,3 +1,4 @@
+from analysis.corrections.correctionlib_files import correction_files
 from analysis.corrections.tau import TauCorrector
 from analysis.corrections.btag import BTagCorrector
 from analysis.corrections.muon import MuonCorrector
@@ -16,10 +17,7 @@ from analysis.corrections.l1prefiring import add_l1prefiring_weight
 from analysis.corrections.partonshower import add_partonshower_weight
 from analysis.corrections.electron_ss import apply_electron_ss_corrections
 from analysis.corrections.tau_energy import apply_tau_energy_scale_corrections
-from analysis.corrections.rochester import (
-    apply_rochester_corrections_run2,
-    apply_rochester_corrections_run3,
-)
+from analysis.corrections.rochester import apply_muon_ss_corrections
 from analysis.corrections.corrections_manager import (
     object_corrector_manager,
     weight_manager,

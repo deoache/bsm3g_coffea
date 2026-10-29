@@ -1,9 +1,11 @@
+import copy
 import numpy as np
 import awkward as ak
 import correctionlib
 from pathlib import Path
 from random import random
 from scipy.special import erfinv, erf
+from analysis.corrections import correction_files
 from analysis.corrections.met import corrected_polar_met
 from coffea.lookup_tools import txt_converters, rochester_lookup
 
@@ -401,16 +403,9 @@ def apply_rochester_corrections_run3(
     shifts: dict,
     corrections_config: dict,
 ):
-    muon_ss_files = {
-        "2022preEE": "/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/Run3-22CDSep23-Summer22-NanoAODv12/2025-08-14/muon_scalesmearing.json.gz",
-        "2022postEE": "/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/Run3-22EFGSep23-Summer22EE-NanoAODv12/2025-08-14/muon_scalesmearing.json.gz",
-        "2023preBPix": "/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/Run3-23CSep23-Summer23-NanoAODv12/2025-08-14/muon_scalesmearing.json.gz",
-        "2023postBPix": "/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/Run3-23DSep23-Summer23BPix-NanoAODv12/2025-08-14/muon_scalesmearing.json.gz",
-        "2024": "/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/2025-10-17/muon_scalesmearing.json.gz",
-    }
-    json_path = muon_ss_files[year]
-    cset = correctionlib.CorrectionSet.from_file(str(json_path))
+    cset = correctionlib.CorrectionSet.from_file(correction_files["muon_ss"][year])
 
+    events["Muon", "pt_raw"] = ak.ones_like(events.Muon.pt) * events.Muon.pt
     muons = events.Muon
     if hasattr(events, "genWeight"):
         # MC: both scale correction to gen Z peak AND resolution correction to Z width in data
@@ -447,6 +442,20 @@ def apply_rochester_corrections_run3(
     for i in range(len(shifts)):
         shifts[i][0]["Muon"] = muons
 
+    # Propagate muon pT changes to MET
+    nominal_met, met = copy.copy(shifts[0][0]["MET"]), copy.copy(shifts[0][0]["MET"])
+    corrected_met_pt, corrected_met_phi = corrected_polar_met(
+        met_pt=nominal_met.pt,
+        met_phi=nominal_met.phi,
+        other_phi=muons.phi,
+        other_pt_old=muons.pt_raw,
+        other_pt_new=muons.pt,
+    )
+    nominal_met["pt"] = corrected_met_pt
+    nominal_met["phi"] = corrected_met_phi
+    # update nominal MET
+    shifts[0][0]["MET"] = nominal_met
+
     # systematics
     if hasattr(events, "genWeight") and corrections_config["apply_obj_syst"]:
         muons_ptscalecorr_up = pt_scale_var(
@@ -470,11 +479,43 @@ def apply_rochester_corrections_run3(
         mu_resol_up["pt"] = muons_ptcorr_resol_up
         mu_resol_down["pt"] = muons_ptcorr_resol_down
 
+        # Propagate muon pT changes to MET
+        met_up, met_down = met, met
+        met_up["pt"], met_up["phi"] = corrected_polar_met(
+            met_pt=met_up.pt,
+            met_phi=met_up.phi,
+            other_phi=mu_scale_up.phi,
+            other_pt_old=mu_scale_up.pt_raw,
+            other_pt_new=mu_scale_up.pt,
+        )
+        met_down["pt"], met_down["phi"] = corrected_polar_met(
+            met_pt=met_down.pt,
+            met_phi=met_down.phi,
+            other_phi=mu_scale_down.phi,
+            other_pt_old=mu_scale_down.pt_raw,
+            other_pt_new=mu_scale_down.pt,
+        )
+        met_resol_up, met_resol_down = met, met
+        met_resol_up["pt"], met_resol_up["phi"] = corrected_polar_met(
+            met_pt=met_resol_up.pt,
+            met_phi=met_resol_up.phi,
+            other_phi=mu_resol_up.phi,
+            other_pt_old=mu_resol_up.pt_raw,
+            other_pt_new=mu_resol_up.pt,
+        )
+        met_resol_down["pt"], met_resol_down["phi"] = corrected_polar_met(
+            met_pt=met_down.pt,
+            met_phi=met_down.phi,
+            other_phi=mu_resol_down.phi,
+            other_pt_old=mu_resol_down.pt_raw,
+            other_pt_new=mu_resol_down.pt,
+        )
+
         shifts += [
             (
                 {
                     "Jet": shifts[0][0]["Jet"],
-                    "MET": shifts[0][0]["MET"],
+                    "MET": met_up,
                     "Muon": mu_scale_up,
                 },
                 f"CMS_scale_m_{year[:4]}Up",
@@ -484,7 +525,7 @@ def apply_rochester_corrections_run3(
             (
                 {
                     "Jet": shifts[0][0]["Jet"],
-                    "MET": shifts[0][0]["MET"],
+                    "MET": met_down,
                     "Muon": mu_scale_down,
                 },
                 f"CMS_scale_m_{year[:4]}Down",
@@ -494,7 +535,7 @@ def apply_rochester_corrections_run3(
             (
                 {
                     "Jet": shifts[0][0]["Jet"],
-                    "MET": shifts[0][0]["MET"],
+                    "MET": met_resol_up,
                     "Muon": mu_resol_up,
                 },
                 f"CMS_res_m_{year[:4]}Up",
@@ -504,7 +545,7 @@ def apply_rochester_corrections_run3(
             (
                 {
                     "Jet": shifts[0][0]["Jet"],
-                    "MET": shifts[0][0]["MET"],
+                    "MET": met_resol_down,
                     "Muon": mu_resol_down,
                 },
                 f"CMS_res_m_{year[:4]}Down",
@@ -595,18 +636,18 @@ def apply_rochester_corrections_run2(
         shifts[i][0]["Muon"] = muons
 
     # Propagate muon pT changes to MET
-    events["MET", "pt_raw"] = events.MET.pt
-    events["MET", "phi_raw"] = events.MET.phi
-    met = events.MET
-    met["pt"], met["phi"] = corrected_polar_met(
-        events.MET.pt_raw,
-        events.MET.phi_raw,
-        events.Muon.phi,
-        events.Muon.pt_raw,
-        events.Muon.pt,
+    nominal_met, met = copy.copy(shifts[0][0]["MET"]), copy.copy(shifts[0][0]["MET"])
+    corrected_met_pt, corrected_met_phi = corrected_polar_met(
+        met_pt=nominal_met.pt,
+        met_phi=nominal_met.phi,
+        other_phi=muons.phi,
+        other_pt_old=muons.pt_raw,
+        other_pt_new=muons.pt,
     )
-    for i in range(len(shifts)):
-        shifts[i][0]["MET"] = met
+    nominal_met["pt"] = corrected_met_pt
+    nominal_met["phi"] = corrected_met_phi
+    # update nominal MET
+    shifts[0][0]["MET"] = nominal_met
 
     # systematics
     if hasattr(events, "genWeight") and corrections_config["apply_obj_syst"]:
@@ -623,17 +664,17 @@ def apply_rochester_corrections_run2(
         mu_down["pt"] = ak.unflatten(pt_down, counts)
 
         # Propagate muon pT changes to MET
-        met_up, met_down = events.MET, events.MET
+        met_up, met_down = met, met
         met_up["pt"], met_up["phi"] = corrected_polar_met(
-            events.MET.pt_raw,
-            events.MET.phi_raw,
+            met_up.pt,
+            met_up.phi,
             mu_up.phi,
             mu_up.pt_raw,
             mu_up.pt,
         )
         met_down["pt"], met_down["phi"] = corrected_polar_met(
-            events.MET.pt_raw,
-            events.MET.phi_raw,
+            met_down.pt,
+            met_down.phi,
             mu_down.phi,
             mu_down.pt_raw,
             mu_down.pt,
@@ -660,4 +701,26 @@ def apply_rochester_corrections_run2(
             )
         ]
 
+    return shifts
+
+
+def apply_muon_ss_corrections(
+    events, year, workflow_config: str, shifts: dict, corrections_config: dict
+):
+    if year.startswith("201"):
+        shifts = apply_rochester_corrections_run2(
+            events,
+            year=year,
+            workflow_config=workflow_config,
+            shifts=shifts,
+            corrections_config=workflow_config.corrections_config,
+        )
+    else:
+        shifts = apply_rochester_corrections_run3(
+            events,
+            year=year,
+            workflow_config=workflow_config,
+            shifts=shifts,
+            corrections_config=workflow_config.corrections_config,
+        )
     return shifts

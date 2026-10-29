@@ -2,7 +2,7 @@ import copy
 import correctionlib
 import numpy as np
 import awkward as ak
-from analysis.corrections.utils import get_pog_json
+from analysis.corrections import correction_files
 from analysis.corrections.met import corrected_polar_met
 
 # ----------------------------------------------------------------------------------- #
@@ -84,9 +84,7 @@ def apply_tau_energy_scale_corrections(
     events, year, shifts: dict, corrections_config: dict
 ):
     # define correction set
-    cset = correctionlib.CorrectionSet.from_file(
-        get_pog_json(json_name="tau", year=year)
-    )
+    cset = correctionlib.CorrectionSet.from_file(correction_files["tau"][year])
 
     # define tau pt_raw field
     events["Tau", "pt_raw"] = ak.ones_like(events.Tau.pt) * events.Tau.pt
@@ -148,8 +146,7 @@ def apply_tau_energy_scale_corrections(
     )
     events[met_name, "pt"] = corrected_met_pt
     events[met_name, "phi"] = corrected_met_phi
-    for i in range(len(shifts)):
-        shifts[i][0]["MET"] = events[met_name]
+    shifts[0][0]["MET"] = events[met_name]
 
     # uncertainties
     if hasattr(events, "genWeight") and corrections_config["apply_obj_syst"]:

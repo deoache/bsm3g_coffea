@@ -6,11 +6,7 @@ from typing import Type
 from pathlib import Path
 from .utils import unflat_sf
 from coffea.analysis_tools import Weights
-from analysis.corrections.utils import pog_years, get_pog_json, get_muon_hlt_json
-
-# https://twiki.cern.ch/twiki/bin/view/CMS/MuonUL2016
-# https://twiki.cern.ch/twiki/bin/view/CMS/MuonUL2017
-# https://twiki.cern.ch/twiki/bin/view/CMS/MuonUL2018
+from analysis.corrections import correction_files
 
 
 class MuonCorrector:
@@ -56,7 +52,7 @@ class MuonCorrector:
 
         # define correction set
         self.cset = correctionlib.CorrectionSet.from_file(
-            get_pog_json(json_name="muon", year=year)
+            correction_files["muon"][year]
         )
         self.year = year
         year_key_map = {
@@ -323,7 +319,7 @@ class MuonCorrector:
             if kind == "double":
                 # for double muon events, compute SF from muons' efficiencies
                 double_cset = correctionlib.CorrectionSet.from_file(
-                    get_muon_hlt_json(year=self.year)
+                    correction_files["muon_hlt"][self.year]
                 )
 
                 data_eff = double_cset["Muon-HLT-DataEff"].evaluate(

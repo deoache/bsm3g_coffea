@@ -3,7 +3,7 @@ import numpy as np
 import awkward as ak
 from analysis.selections import delta_r_mask
 from analysis.working_points import working_points
-from analysis.corrections.utils import get_pog_json
+from analysis.corrections import correction_files
 
 
 def jetvetomap(events: ak.Array, year: str, mapname: str = "jetvetomap"):
@@ -39,7 +39,7 @@ def jetvetomap(events: ak.Array, year: str, mapname: str = "jetvetomap"):
         "2023postBPix": "Summer23BPixPrompt23_RunD_V1",
         "2024": "Summer24Prompt24_RunBCDEFGHI_V1",
     }
-    cset = correctionlib.CorrectionSet.from_file(get_pog_json("jetvetomaps", year))
+    cset = correctionlib.CorrectionSet.from_file(correction_files["jetvetomaps"][year])
 
     # nominal loose selection
     run = "2" if year.startswith("201") else "3"

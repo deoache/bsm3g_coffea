@@ -4,7 +4,7 @@ import awkward as ak
 from typing import Type
 from .utils import unflat_sf
 from coffea.analysis_tools import Weights
-from analysis.corrections.utils import get_pog_json
+from analysis.corrections import correction_files
 
 
 def add_pujetid_weight(
@@ -75,7 +75,7 @@ def add_pujetid_weight(
     jets_eta = ak.fill_none(in_jets.eta, 0.0)
 
     # define correction set
-    cset = correctionlib.CorrectionSet.from_file(get_pog_json("pujetid", year))
+    cset = correctionlib.CorrectionSet.from_file(correction_files["pujetid"][year])
     # get nominal scale factors
     # If jet in 'in-limits' jets, then take the computed SF, otherwise assign 1
     # Unflatten to original shape

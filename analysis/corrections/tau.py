@@ -8,8 +8,7 @@ from typing import Type
 from pathlib import Path
 from .utils import unflat_sf
 from coffea.analysis_tools import Weights
-from analysis.corrections.utils import pog_years, get_pog_json
-
+from analysis.corrections import correction_files
 
 """
 TauID corrections
@@ -86,17 +85,10 @@ class TauCorrector:
         self.variation = variation
 
         # define correction set_id
-        self.cset = correctionlib.CorrectionSet.from_file(
-            get_pog_json(json_name="tau", year=self.year)
-        )
-        self.pog_year = pog_years[year]
-        """
-        Check: https://github.com/cms-tau-pog/TauFW/blob/43bc39474b689d9712107d53a953b38c3cd9d43e/PicoProducer/python/analysis/ModuleETau.py#L270 
-        """
+        self.cset = correctionlib.CorrectionSet.from_file(correction_files["tau"][year])
 
     # e -> tau_h fake rate SFs for DeepTau2017v2p1VSe
     # eta = (0, 2.3]; genMatch = 0,1; wp = Loose, Medium, Tight, VLoose, VTight, VVLoose, VVTight; syst: down, nom, up
-
     def add_id_weight_deeptauvse(self):
         """
         Sf is called with:

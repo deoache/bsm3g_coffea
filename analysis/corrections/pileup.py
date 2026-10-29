@@ -2,7 +2,7 @@ import correctionlib
 import awkward as ak
 from typing import Type
 from coffea.analysis_tools import Weights
-from analysis.corrections.utils import get_pog_json
+from analysis.corrections import correction_files
 
 
 def add_pileup_weight(
@@ -29,9 +29,7 @@ def add_pileup_weight(
     https://cms-nanoaod-integration.web.cern.ch/commonJSONSFs/summaries/LUM_2017_UL_puWeights.html
     """
     # define correction set and goldenJSON file names
-    cset = correctionlib.CorrectionSet.from_file(
-        get_pog_json(json_name="pileup", year=year)
-    )
+    cset = correctionlib.CorrectionSet.from_file(correction_files["pileup"][year])
     year_to_corr = {
         "2016preVFP": "Collisions16_UltraLegacy_goldenJSON",
         "2016postVFP": "Collisions16_UltraLegacy_goldenJSON",
