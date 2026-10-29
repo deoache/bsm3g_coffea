@@ -78,8 +78,8 @@ event_selection:
     trigger_match: get_trigger_match_mask(events, hlt_paths, year, events.Muon)
     metfilters: get_metfilters_mask(events, year)
     hemcleaning: get_hemcleaning_mask(events, year)
-    dy_stitching: get_stitching_mask(events, dataset, 'DYJetsToLL_inclusive', 70)
-    w_stitching: get_stitching_mask(events, dataset, 'WJetsToLNu_inclusive', 100)
+    dy_stitching: get_stitching_mask(events, dataset, 'DY.*inclusive', 70)
+    w_stitching: get_stitching_mask(events, dataset, 'W.*inclusive', 100)
     met_250: objects['met'].pt > 250
     two_muons: ak.num(objects['muons']) == 2
     one_dimuon: ak.num(objects['dimuons']) == 1
@@ -105,8 +105,10 @@ event_selection:
 corrections:
   objects:
     - jets
+    - jets_veto
     - muons
     - electrons
+    - taus
     - met
   apply_obj_syst: false
   event_weights:
@@ -117,6 +119,7 @@ corrections:
     lhescaleWeight: false
     partonshowerWeight: false
     ISRWeight: false
+    topPtWeight: true
     pujetid:
       - id: tight
     btagging: false

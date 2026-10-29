@@ -61,8 +61,8 @@ event_selection:
     trigger_match: get_trigger_match_mask(events, hlt_paths, year, events.Muon)
     lumi: get_lumi_mask(events, year)
     metfilters: get_metfilters_mask(events, year)
-    dy_stitching: get_stitching_mask(events, dataset, 'DYJetsToLL_inclusive', 40)
-    w_stitching: get_stitching_mask(events, dataset, 'WJetsToLNu_inclusive', 40)
+    dy_stitching: get_stitching_mask(events, dataset, 'DY.*inclusive', 70)
+    w_stitching: get_stitching_mask(events, dataset, 'W.*inclusive', 100)
     goodvertex: events.PV.npvsGood > 0
     two_muons: ak.num(objects['muons']) == 2
     one_dimuon: ak.num(objects['dimuons']) == 1
@@ -101,6 +101,7 @@ corrections:
     lhepdfWeight: false
     lhescaleWeight: false
     partonshowerWeight: false
+    topPtWeight: true
     ISRWeight: false
     muon:
       - id: tight

@@ -91,32 +91,17 @@ event_selection:
     trigger_match: get_trigger_match_mask(events, hlt_paths, year, events.Muon)
     metfilters: get_metfilters_mask(events, year)
     hemcleaning: get_hemcleaning_mask(events, year)
-    dy_stitching: get_stitching_mask(events, dataset, 'DYJetsToLL_inclusive', 70)
-    w_stitching: get_stitching_mask(events, dataset, 'WJetsToLNu_inclusive', 100)
+    dy_stitching: get_stitching_mask(events, dataset, 'DY.*inclusive', 70)
+    w_stitching: get_stitching_mask(events, dataset, 'W.*inclusive', 100)
     met_250: objects['met'].pt > 250
     one_muon: ak.num(objects['muons']) == 1
     muon_veto: ak.num(objects['veto_muons']) == 0
     electron_veto: ak.num(objects['electrons']) == 0
     tau_veto: ak.num(objects['taus']) == 0
-    bjet_veto: ak.num(objects['bjets']) == 0
     atleast_one_jet: ak.num(objects['jets']) > 0
     atleast_two_jets: ak.num(objects['jets']) > 1
     atleast_one_dijet: ak.num(objects['dijets']) > 0
   categories:
-    central:
-      - goodvertex
-      - lumi
-      - trigger
-      - trigger_match
-      - metfilters
-      - dy_stitching
-      - w_stitching
-      - met_250
-      - hemcleaning
-      - one_muon
-      - muon_veto
-      - electron_veto
-      - tau_veto
     vbf:
       - goodvertex
       - lumi
@@ -148,6 +133,7 @@ corrections:
     lhepdfWeight: false
     lhescaleWeight: false
     partonshowerWeight: true
+    topPtWeight: true
     pujetid:
       - id: tight
     btagging: false
