@@ -1,3 +1,4 @@
+import re
 import json
 import numpy as np
 import awkward as ak
@@ -103,9 +104,9 @@ def get_trigger_match_mask(events, hlt_paths, year, leptons):
     return ak.sum(mask, axis=-1) > 0
 
 
-def get_stitching_mask(events, dataset, dataset_key, ht_value):
+def get_stitching_mask(events, dataset, dataset_pattern, ht_value):
     stitching_mask = np.ones(len(events), dtype="bool")
-    if dataset.startswith(dataset_key):
+    if re.search(dataset_pattern, dataset, re.IGNORECASE):
         stitching_mask = events.LHE.HT < ht_value
     return stitching_mask
 
