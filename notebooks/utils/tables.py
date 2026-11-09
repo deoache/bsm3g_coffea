@@ -417,7 +417,7 @@ def generate_latex_table_ttbar(out, procs_order, year="2022preEE", workflow="2b1
     latex_code += f"Non-$t\\bar{{t}}$ background & ${non_tt_val:.2f} \\pm {non_tt_stat:.2f} \\pm {non_tt_syst:.2f}$ & ${pct_non_tt:.2f}\\%$ \\\\\n"
     latex_code += f"Data $-$ non-$t\\bar{{t}}$ background & ${diff_val:.2f} \\pm {diff_stat:.2f} \\pm {diff_syst:.2f}$ & -- \\\\\n"
     latex_code += "\\hline\n"
-    latex_code += f"$\\mu_{{t\\bar{{t}}}}$ & ${mu_tt:.2f} \\pm {fmt_sci(mu_stat, 2)} \\pm {mu_syst:.2f}$ & -- \\\\\n"
+    latex_code += f"$r_{{t\\bar{{t}}}}$ & ${mu_tt:.2f} \\pm {fmt_sci(mu_stat, 2)} \\pm {mu_syst:.2f}$ & -- \\\\\n"
     latex_code += "\\hline\n"
     latex_code += "\\end{tabular}\n"
     latex_code += "\\end{table}"
@@ -885,7 +885,7 @@ def generate_qcd_tf_tables_and_pngs(
 ):
   """Loads the qcd_tf_mu and qcd_tf_ele histograms, generates the LaTeX tables per region/year and compiles the PNGs."""
   if plots_dir is None:
-    plots_dir = Path("notebooks/plots/qcd_tf_estimation")
+    plots_dir = Path("notebooks/plots/qcd_estimation")
   plots_dir = Path(plots_dir)
   plots_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1043,7 +1043,7 @@ def generate_qcd_cr_tables_and_pngs(
 ):
   """Loads the qcd_ele and qcd_mu histograms for the 'base' region, generates the LaTeX table and compiles it to PNG."""
   if plots_dir is None:
-    plots_dir = Path("notebooks/plots/qcd_control_region")
+    plots_dir = Path("notebooks/plots/qcd_estimation")
   plots_dir = Path(plots_dir)
   plots_dir.mkdir(parents=True, exist_ok=True)
 

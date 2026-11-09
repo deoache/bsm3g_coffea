@@ -53,6 +53,14 @@ if __name__ == "__main__":
         help="Enable saving outputs to /eos",
     )
     parser.add_argument(
+        "-e",
+        "--executor",
+        dest="executor",
+        type=str,
+        default="futures",
+        help="executor to run the processor",
+    )
+    parser.add_argument(
         "--output_format",
         type=str,
         default="coffea",
@@ -137,7 +145,9 @@ if __name__ == "__main__":
             "--cpus",
             str(args.cpus),
             "--workers",
-            str(args.workers)
+            str(args.workers),
+            "--executor",
+            str(args.executor)
         ]
         if args.submit:
             cmd_args.append("--submit")

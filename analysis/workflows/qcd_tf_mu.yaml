@@ -3,7 +3,9 @@ datasets:
     - muon
   mc:
     - dy_inclusive
+    - dy_ht
     - wjets_inclusive
+    - wjets_ht
     - singletop
     - tt
     - diboson
@@ -71,7 +73,9 @@ event_selection:
     trigger: get_trigger_mask(events, hlt_paths, dataset, year)
     trigger_match: get_trigger_match_mask(events, hlt_paths, year, events.Muon)
     metfilters: get_metfilters_mask(events, year)
-    met_30: objects['met'].pt > 30
+    met_50: objects['met'].pt > 50
+    dy_stitching: get_stitching_mask(events, dataset, 'DY.*inclusive', 70)
+    w_stitching: get_stitching_mask(events, dataset, 'W.*inclusive', 100)
     hemcleaning: get_hemcleaning_mask(events, year)
     two_muon: ak.num(objects['muons']) == 2
     one_dimuon: ak.num(objects['dimuons']) == 1
@@ -87,7 +91,9 @@ event_selection:
       - trigger
       - trigger_match
       - metfilters
-      - met_30
+      - met_50
+      - dy_stitching
+      - w_stitching
       - hemcleaning
       - two_muon
       - one_dimuon
@@ -100,7 +106,9 @@ event_selection:
       - trigger
       - trigger_match
       - metfilters
-      - met_30
+      - met_50
+      - dy_stitching
+      - w_stitching
       - hemcleaning
       - two_muon
       - one_dimuon
@@ -113,7 +121,9 @@ event_selection:
       - trigger
       - trigger_match
       - metfilters
-      - met_30
+      - met_50
+      - dy_stitching
+      - w_stitching
       - hemcleaning
       - two_muon
       - one_dimuon
@@ -123,8 +133,9 @@ event_selection:
 corrections:
   objects:
     - jets
-    - muons
     - jets_veto
+    - muons
+    - electrons
     - taus
     - met
   apply_obj_syst: true

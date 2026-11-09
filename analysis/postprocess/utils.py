@@ -7,17 +7,26 @@ import numpy as np
 import pandas as pd
 from coffea.processor import accumulate
 import matplotlib.text as mtext
-
+import logging
+from pathlib import Path
 
 def setup_logger(output_dir):
-    """Set up the logger to log to a file in the specified output directory."""
-    output_file_path = os.path.join(output_dir, "output.txt")
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(message)s",
-        handlers=[logging.FileHandler(output_file_path), logging.StreamHandler()],
-    )
+    afs_log_dir = Path.cwd() / "logs"
+    afs_log_dir.mkdir(parents=True, exist_ok=True)
+    output_file_path = afs_log_dir / "output.txt"
 
+    # Handler para el archivo (con timestamp y [INFO])
+    file_handler = logging.FileHandler(str(output_file_path), mode="w")
+    file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+
+    # Handler para la pantalla (solo el mensaje de texto limpio)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter("%(message)s"))
+
+    # Configuración global del logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    logger.handlers = [file_handler, console_handler]
 
 def open_output(fname: str) -> dict:
     with open(fname, "rb") as f:

@@ -1,5 +1,6 @@
 import numpy as np
 import awkward as ak
+from analysis.filesets.utils import get_dataset_config
 
 
 def top_pt_sf(pt):
@@ -7,9 +8,15 @@ def top_pt_sf(pt):
     return 0.103 * np.exp(-0.0118 * pt) - 0.000134 * pt + 0.973
 
 
-def add_top_pt_weight(events, weights_container, dataset, variation):
+def add_top_pt_weight(events, year, weights_container, dataset, variation):
     # https://twiki.cern.ch/twiki/bin/viewauth/CMS/TopPtReweighting#How_to_practically_apply_default
-    if dataset.startswith("TT"):
+    dataset_config = get_dataset_config(year)
+    for d in dataset_config:
+        if dataset.startswith(d):
+            dataset_process = dataset_config[d]["process"]
+            break
+
+    if dataset_process == "tt":
         top = events.GenPart[
             (events.GenPart.pdgId == 6) & events.GenPart.hasFlags(["isLastCopy"])
         ]
@@ -22,7 +29,7 @@ def add_top_pt_weight(events, weights_container, dataset, variation):
             * top_pt_sf(ak.flatten(anti_top.pt, axis=-1))
         )
     else:
-        top_pt_weight = ak.ones(events)
+        top_pt_weight = np.ones(len(events))
 
     weights_container.add(
         name="top_pt_weight",

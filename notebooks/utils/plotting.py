@@ -313,9 +313,9 @@ class CoffeaPlotter:
 
         ax.set_ylabel("Events / GeV", fontsize=14)
         xlabel_str = (
-            r"$m_T(\mu_1, p_T^{\mathrm{miss}})$ [GeV]"
+            r"$m_T(\mu_2, p_T^{\mathrm{miss}})$ [GeV]"
             if "mu" in var_axis
-            else r"$m_T(e_1, p_T^{\mathrm{miss}})$ [GeV]"
+            else r"$m_T(e_2, p_T^{\mathrm{miss}})$ [GeV]"
         )
         ax.set_xlabel(xlabel_str, fontsize=14)
         ax.text(
@@ -464,7 +464,7 @@ def plot_panel(
         )
 
     ax_ratio.set_ylabel(
-        r"$\mu_{t\bar{t}}=\frac{\mathrm{Data}-\mathrm{non}\,t\bar{t}\,\mathrm{MC}}{t\bar{t}\,\mathrm{MC}}$",
+        r"$r_{t\bar{t}}=\frac{\mathrm{Data}-\mathrm{non}\,t\bar{t}\,\mathrm{MC}}{t\bar{t}\,\mathrm{MC}}$",
         fontsize=10,
     )
     ax_ratio.set_xlabel(xlabel_str, fontsize=12)
@@ -593,7 +593,7 @@ def plot_sr_corrected_panel(
         color=color_map.get("tt", "#FFC0CB"),
         edgecolor="black",
         linewidth=0.8,
-        label=r"$t\bar{t}$ MC ($\times \mu_{t\bar{t}}$)",
+        label=r"$t\bar{t}$ MC ($\times r_{t\bar{t}}$)",
         zorder=1,
     )
 
@@ -638,7 +638,7 @@ def plot_sr_corrected_panel(
     by_label = dict(zip(labels, handles))
     desired_sr_order = [
         r"$t\bar{t}$ uncorrected",
-        r"$t\bar{t}$ MC ($\times \mu_{t\bar{t}}$)",
+        r"$t\bar{t}$ MC ($\times r_{t\bar{t}}$)",
         r"Stat + Syst unc.",
     ]
     ax.legend(

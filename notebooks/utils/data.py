@@ -139,6 +139,11 @@ def run_qcd_estimation(tf_store, years, luminosities, plots_dir=None):
 
     qcd_store = {}
 
+    # Calculate grid layout dynamically based on the number of years
+    n_years = len(years)
+    ncols = 2
+    nrows = (n_years + ncols - 1) // ncols
+
     for tf_workflow, config in WORKFLOWS_QCD_CONFIG.items():
         qcd_workflow = config["qcd_workflow"]
         variable_qcd = config["variable_qcd"]
@@ -146,28 +151,46 @@ def run_qcd_estimation(tf_store, years, luminosities, plots_dir=None):
         cat_num = config["cat_num"]
         cat_den = config["cat_den"]
 
-        fig, axes = plt.subplots(2, 2, figsize=(14, 12), sharex=False, sharey=False)
-        grid_indices = [(0, 0), (0, 1), (1, 0), (1, 1)]
+        fig, axes = plt.subplots(
+            nrows, ncols, figsize=(14, 5 * nrows), sharex=False, sharey=False
+        )
+        axes_flat = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
         qcd_store[qcd_workflow] = {}
 
-        for year, (row, col) in zip(years, grid_indices):
+        for idx, year in enumerate(years):
             run_key = "2" if year.startswith("201") else "3"
-            ax_grid = axes[row, col]
+            ax_grid = axes_flat[idx]
 
             # 1. QCD control region
             out_qcd = load_hists(year, qcd_workflow)
-            mc_qcd_all = accumulate([out_qcd[p]["mass"] for p in procs_qcd if p in out_qcd])
+            mc_qcd_all = accumulate(
+                [out_qcd[p]["mass"] for p in procs_qcd if p in out_qcd]
+            )
             h_qcd_base = out_qcd["Data"]["mass"] + (mc_qcd_all * -1)
             h_qcd_cr = h_qcd_base[{"variation": "nominal"}].project(variable_qcd)
 
             # 2. Discrete Transfer Factor
             out_tf = load_hists(year, tf_workflow)
-            available_mcs_tf = [out_tf[p]["transverse_mass"] for p in procs_tf if p in out_tf and "transverse_mass" in out_tf[p]]
-            h_tf_base = out_tf["Data"]["transverse_mass"] + (accumulate(available_mcs_tf) * -1)
-            axis_to_project = [ax.name for ax in h_tf_base.axes if ax.name not in ["variation", "category"]][0]
+            available_mcs_tf = [
+                out_tf[p]["transverse_mass"]
+                for p in procs_tf
+                if p in out_tf and "transverse_mass" in out_tf[p]
+            ]
+            h_tf_base = out_tf["Data"]["transverse_mass"] + (
+                accumulate(available_mcs_tf) * -1
+            )
+            axis_to_project = [
+                ax.name
+                for ax in h_tf_base.axes
+                if ax.name not in ["variation", "category"]
+            ][0]
 
-            h_Tight = h_tf_base[{"variation": "nominal", "category": cat_num}].project(axis_to_project)
-            h_nTight = h_tf_base[{"variation": "nominal", "category": cat_den}].project(axis_to_project)
+            h_Tight = h_tf_base[
+                {"variation": "nominal", "category": cat_num}
+            ].project(axis_to_project)
+            h_nTight = h_tf_base[
+                {"variation": "nominal", "category": cat_den}
+            ].project(axis_to_project)
 
             num_vals = h_Tight.values()
             den_vals = h_nTight.values() + 1e-32
@@ -179,10 +202,13 @@ def run_qcd_estimation(tf_store, years, luminosities, plots_dir=None):
 
             # 4. Scale the control region by the hybrid TF
             h_qcd = h_qcd_cr.copy()
-            h_qcd.view()[:] = np.stack([
-                h_qcd_cr.values() * tf_effective,
-                h_qcd_cr.variances() * (tf_effective**2)
-            ], axis=-1)
+            h_qcd.view()[:] = np.stack(
+                [
+                    h_qcd_cr.values() * tf_effective,
+                    h_qcd_cr.variances() * (tf_effective**2),
+                ],
+                axis=-1,
+            )
 
             qcd_store[qcd_workflow][year] = h_qcd.copy()
 
@@ -191,32 +217,61 @@ def run_qcd_estimation(tf_store, years, luminosities, plots_dir=None):
             edges = h_qcd.axes[0].edges
             centers = 0.5 * (edges[:-1] + edges[1:])
 
-            var_num = h_Tight.variances() if h_Tight.variances() is not None else np.abs(num_vals)
+            var_num = (
+                h_Tight.variances()
+                if h_Tight.variances() is not None
+                else np.abs(num_vals)
+            )
             tf_variances = var_num * np.power(den_vals, -2)
-            tf_uncert = np.abs(poisson_interval(np.maximum(tf_effective, 1e-5), tf_variances) - np.maximum(tf_effective, 1e-5))
+            tf_uncert = np.abs(
+                poisson_interval(np.maximum(tf_effective, 1e-5), tf_variances)
+                - np.maximum(tf_effective, 1e-5)
+            )
 
             qcd_cr_pos = np.maximum(h_qcd_cr.values(), 0.0)
             err_down_normalized = (tf_uncert[0] * qcd_cr_pos) / widths
             err_up_normalized = (tf_uncert[1] * qcd_cr_pos) / widths
-            
-            yerr_poisson = np.maximum(np.array([err_down_normalized, err_up_normalized]), 0.0)
-            yerr_poisson = np.nan_to_num(yerr_poisson, nan=0.0, posinf=0.0, neginf=0.0)
+
+            yerr_poisson = np.maximum(
+                np.array([err_down_normalized, err_up_normalized]), 0.0
+            )
+            yerr_poisson = np.nan_to_num(
+                yerr_poisson, nan=0.0, posinf=0.0, neginf=0.0
+            )
 
             h_norm = hist.Hist(h_qcd.axes[0], storage=hist.storage.Weight())
-            h_norm.view()[:] = np.stack([
-                h_qcd.values() / widths,
-                h_qcd.variances() / (widths**2)
-            ], axis=-1)
+            h_norm.view()[:] = np.stack(
+                [h_qcd.values() / widths, h_qcd.variances() / (widths**2)],
+                axis=-1,
+            )
 
             lumi_val = float(round(luminosities[year] * 1e-3, 1))
             com_val = float(energy[run_key].split()[0])
 
-            # Combined 2x2 panel
-            plot_qcd_panel(ax_grid, h_norm, centers, yerr_poisson, xlabel, lumi_val, com_val, year)
+            # Combined panel plot in grid
+            plot_qcd_panel(
+                ax_grid,
+                h_norm,
+                centers,
+                yerr_poisson,
+                xlabel,
+                lumi_val,
+                com_val,
+                year,
+            )
 
-            # Individual panel
+            # Individual panel plot
             fig_ind, ax_ind = plt.subplots(figsize=(8, 6))
-            plot_qcd_panel(ax_ind, h_norm, centers, yerr_poisson, xlabel, lumi_val, com_val, year)
+            plot_qcd_panel(
+                ax_ind,
+                h_norm,
+                centers,
+                yerr_poisson,
+                xlabel,
+                lumi_val,
+                com_val,
+                year,
+            )
             fig_ind.tight_layout()
             fig_ind.savefig(
                 plots_dir / f"qcd_estimation_{qcd_workflow}_{year}.png",
@@ -225,9 +280,17 @@ def run_qcd_estimation(tf_store, years, luminosities, plots_dir=None):
             )
             plt.close(fig_ind)
 
-        # 2x2 panel per workflow
+        # Remove any empty remaining axes (e.g., cell 6 on a 3x2 grid when processing 5 years)
+        for j in range(len(years), len(axes_flat)):
+            fig.delaxes(axes_flat[j])
+
+        # Combined grid figure per workflow
         fig.tight_layout()
-        fig.savefig(plots_dir / f"qcd_estimation_{qcd_workflow}.png", dpi=300, bbox_inches="tight")
+        fig.savefig(
+            plots_dir / f"qcd_estimation_{qcd_workflow}.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
         plt.close(fig)
 
     return qcd_store
@@ -253,7 +316,10 @@ def plot_qcd_injected_signals(qcd_store, years, luminosities, plots_dir=None):
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     main_key = "mass"
-    grid_indices = [(0, 0), (0, 1), (1, 0), (1, 1)]
+
+    n_years = len(years)
+    ncols = 2
+    nrows = (n_years + ncols - 1) // ncols
 
     for sig_workflow, config in SIGNAL_WORKFLOWS_CONFIG.items():
         variable_axis = config["variable_axis"]
@@ -261,11 +327,12 @@ def plot_qcd_injected_signals(qcd_store, years, luminosities, plots_dir=None):
         qcd_key = config["qcd_key"]
 
         fig, axes = plt.subplots(
-            2, 2, figsize=(16, 14), sharex=False, sharey=False
+            nrows, ncols, figsize=(16, 6 * nrows), sharex=False, sharey=False
         )
+        axes_flat = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
 
-        for year, (row, col) in zip(years, grid_indices):
-            ax_grid = axes[row, col]
+        for idx, year in enumerate(years):
+            ax_grid = axes_flat[idx]
 
             # 1. Load signal histograms
             out_signal = load_hists(year, sig_workflow)
@@ -311,7 +378,7 @@ def plot_qcd_injected_signals(qcd_store, years, luminosities, plots_dir=None):
 
             out_signal["QCD"] = {main_key: h_final_qcd}
 
-            # 2. Draw panel in the 2x2 grid
+            # 2. Draw panel in grid
             plotter_grid = CoffeaPlotter(
                 workflow=sig_workflow,
                 year=year,
@@ -327,7 +394,7 @@ def plot_qcd_injected_signals(qcd_store, years, luminosities, plots_dir=None):
                 log=True,
             )
 
-            # 3. Draw and save each individual figure separately
+            # 3. Draw individual figure
             fig_ind, ax_ind = plt.subplots(figsize=(8, 7))
             plotter_ind = CoffeaPlotter(
                 workflow=sig_workflow,
@@ -351,7 +418,10 @@ def plot_qcd_injected_signals(qcd_store, years, luminosities, plots_dir=None):
             )
             plt.close(fig_ind)
 
-        # 4. Save the combined 2x2 grid per workflow
+        # Clean unused axes
+        for j in range(len(years), len(axes_flat)):
+            fig.delaxes(axes_flat[j])
+
         fig.tight_layout()
         fig.savefig(
             plots_dir / f"qcd_injected_{sig_workflow}.png",
@@ -363,7 +433,6 @@ def plot_qcd_injected_signals(qcd_store, years, luminosities, plots_dir=None):
 def run_ttbar_estimation(
     years, workflows, luminosities, color_map, plots_dir=None
 ):
-    """Runs the ttbar estimation (without polynomial fit) and saves the plots as PNG."""
     if plots_dir is None:
         plots_dir = Path("notebooks/plots/ttbar_estimation")
     plots_dir = Path(plots_dir)
@@ -377,10 +446,14 @@ def run_ttbar_estimation(
         r"Stat + Syst unc.",
     ]
 
+    n_years = len(years)
+    ncols = 2
+    nrows = (n_years + ncols - 1) // ncols
+
     for workflow in workflows:
-        fig = plt.figure(figsize=(18, 14))
+        fig = plt.figure(figsize=(18, 6 * nrows))
         outer_grid = gridspec.GridSpec(
-            2, 2, figure=fig, wspace=0.15, hspace=0.25
+            nrows, ncols, figure=fig, wspace=0.15, hspace=0.25
         )
         channel = (
             "muon" if "mu" in workflow and workflow != "1b1e1mu" else "electron"
@@ -472,7 +545,6 @@ def run_ttbar_estimation(
             mc_pack = (mc_vals_per_gev, mc_errs_per_gev, y_min)
             fit_pack = (accpt, yerr_accpt, xerr, ratio_up, ratio_down)
             
-            # None is passed instead of x_fine, y_fine and best_degree
             meta_pack = (
                 None,
                 None,
@@ -484,7 +556,7 @@ def run_ttbar_estimation(
                 year,
             )
 
-            # Combined 2x2 panel
+            # Combined panel plot in grid
             inner_grid = gridspec.GridSpecFromSubplotSpec(
                 2,
                 1,
@@ -507,7 +579,7 @@ def run_ttbar_estimation(
             )
             fig.align_ylabels([ax_main, ax_ratio])
 
-            # Individual panel
+            # Individual panel plot
             fig_ind, (ax_main_ind, ax_ratio_ind) = plt.subplots(
                 2,
                 1,
@@ -544,7 +616,6 @@ def run_ttbar_estimation(
 def run_sr_ttbar_correction(
     sr_to_cr, years, luminosities, color_map, plots_dir=None
 ):
-    """Computes the ttbar shape correction from the CR to the SR and saves the individual and combined figures."""
     if plots_dir is None:
         plots_dir = Path("notebooks/plots/ttbar_estimation")
     plots_dir = Path(plots_dir)
@@ -553,11 +624,15 @@ def run_sr_ttbar_correction(
     procs = ["DYJetsToLL", "SingleTop", "Diboson", "WJetsToLNu"]
     energy = {"2": "13", "3": "13.6"}
 
+    n_years = len(years)
+    ncols = 2
+    nrows = (n_years + ncols - 1) // ncols
+
     for sr_workflow, cr_list in sr_to_cr.items():
         for cr_workflow in cr_list:
-            fig = plt.figure(figsize=(18, 14))
+            fig = plt.figure(figsize=(18, 6 * nrows))
             outer_grid = gridspec.GridSpec(
-                2, 2, figure=fig, wspace=0.20, hspace=0.25
+                nrows, ncols, figure=fig, wspace=0.20, hspace=0.25
             )
 
             channel = "muon" if "mu" in sr_workflow else "electron"
@@ -663,7 +738,7 @@ def run_sr_ttbar_correction(
                 lumi_val = float(round(luminosities[year] * 1e-3, 1))
                 com_val = float(energy[run_key].split()[0])
 
-                # Combined 2x2 panel
+                # Combined grid panel
                 ax_main = fig.add_subplot(outer_grid[idx])
                 plot_sr_corrected_panel(
                     ax_main,
@@ -681,7 +756,7 @@ def run_sr_ttbar_correction(
                     color_map,
                 )
 
-                # Individual 1x1 panel
+                # Individual panel plot
                 fig_ind, ax_m_ind = plt.subplots(figsize=(9, 6))
                 plot_sr_corrected_panel(
                     ax_m_ind,
@@ -713,7 +788,6 @@ def run_sr_ttbar_correction(
                 bbox_inches="tight",
             )
             plt.close(fig)
-
 
 def run_ttbar_sr_poly_correction(
     sr_to_crs, years, luminosities, plots_dir=None
@@ -845,7 +919,6 @@ def run_ttbar_sr_poly_correction(
                 plt.close(fig)
 
 def run_systematic_comparison(workflows, years, luminosities=None, output_dir=None):
-    """Calculates and plots systematic differences between nominal and recalculated masses for Data - non-tt MC."""
     if output_dir is None:
         output_dir = Path("notebooks/plots/ttbar_estimation/syst")
     output_dir = Path(output_dir)
@@ -862,12 +935,16 @@ def run_systematic_comparison(workflows, years, luminosities=None, output_dir=No
     if luminosities is None:
         luminosities = {}
 
+    n_years = len(years)
+    ncols = 2
+    nrows = (n_years + ncols - 1) // ncols
+
     for workflow in workflows:
         var_nom, var_recalc = config_mapping[workflow]
 
-        fig_grid = plt.figure(figsize=(18, 14))
+        fig_grid = plt.figure(figsize=(18, 6 * nrows))
         outer_grid = gridspec.GridSpec(
-            2, 2, figure=fig_grid, wspace=0.15, hspace=0.25
+            nrows, ncols, figure=fig_grid, wspace=0.15, hspace=0.25
         )
 
         for idx, year in enumerate(years):
@@ -950,7 +1027,7 @@ def run_systematic_comparison(workflows, years, luminosities=None, output_dir=No
             )
             var_tot_recalc = v_d_recalc + v_mc_recalc
 
-            # 3. Compute difference and propagated statistical uncertainty
+            # 3. Compute difference and statistical uncertainties
             delta_data = diff_nom - diff_recalc
             err_delta = np.sqrt(np.maximum(var_tot_nom + var_tot_recalc, 0))
 
@@ -963,7 +1040,7 @@ def run_systematic_comparison(workflows, years, luminosities=None, output_dir=No
             centers = 0.5 * (edges[:-1] + edges[1:])
             bin_widths = np.diff(edges)
 
-            # Combined 2x2 grid panel
+            # Combined grid panel
             inner_grid = gridspec.GridSpecFromSubplotSpec(
                 2,
                 1,
@@ -992,7 +1069,7 @@ def run_systematic_comparison(workflows, years, luminosities=None, output_dir=No
             )
             fig_grid.align_ylabels([ax_main_grid, ax_bot_grid])
 
-            # Individual 1x1 panel
+            # Individual panel plot
             fig_ind, (ax_main_ind, ax_bot_ind) = plt.subplots(
                 2,
                 1,
@@ -1028,6 +1105,3 @@ def run_systematic_comparison(workflows, years, luminosities=None, output_dir=No
             bbox_inches="tight",
         )
         plt.close(fig_grid)
-        print(
-            f"Finished processing systematic difference for workflow: {workflow}"
-        )

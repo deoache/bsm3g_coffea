@@ -10,7 +10,7 @@ import importlib.resources
 from pathlib import Path
 
 with importlib.resources.open_text(
-    f"analysis.corrections", f"jec_params.yaml"
+    f"analysis.corrections", f"jec_params_correctionlib.yaml"
 ) as file:
     config = yaml.safe_load(file)
 

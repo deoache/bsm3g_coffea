@@ -90,7 +90,7 @@ def submit_condor(args):
         subprocess.run(f"sed -i -E 's#root://.*/store/#root://cms-xrd-global.cern.ch//store/#g' {partition_file}",shell=True)
 
     jobnum_file = job_dir / "jobnum.txt"
-    with open(f"{jobnum_file}", "w") as f:# 3. Agrega la bandera si skipbadfiles es true (maneja booleano JSON 'True' o string 'true')
+    with open(f"{jobnum_file}", "w") as f:
         print(*jobnum_list, sep="\n", file=f)
 
     # build and save arguments json
@@ -237,6 +237,14 @@ if __name__ == "__main__":
         action="store_const",
         const="rucio",
         help="Use DataDiscoveryCLI (Rucio) for dataset discovery.",
+    )
+    parser.add_argument(
+        "-e",
+        "--executor",
+        dest="executor",
+        type=str,
+        default="futures",
+        help="executor to run the processor",
     )
     parser.set_defaults(discovery="rucio")
     args = parser.parse_args()

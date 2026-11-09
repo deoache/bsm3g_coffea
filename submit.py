@@ -104,7 +104,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--workers",
         type=int,
-        default=4,
+        default="4",
         help="change the number of workers to process the analysis",
     )
     parser.add_argument(
@@ -117,6 +117,14 @@ if __name__ == "__main__":
         "--skipbadfiles",
         action="store_true",
         help="skip root files with errors",
+    )
+    parser.add_argument(
+        "-e",
+        "--executor",
+        dest="executor",
+        type=str,
+        default="futures",
+        help="executor to run the processor",
     )
     args = parser.parse_args()
     main(args)

@@ -11,6 +11,7 @@ from typing import Type
 from coffea.analysis_tools import Weights
 from analysis.corrections.utils import get_pog_json
 from analysis.working_points.utils import get_btag_mask
+from analysis.corrections import correction_files
 
 
 class BTagCorrector:
@@ -101,7 +102,7 @@ class BTagCorrector:
 
         # define correction set
         self._cset = correctionlib.CorrectionSet.from_file(
-            get_pog_json(json_name="btag", year=year)
+            correction_files["btag"][year]
         )
 
         # select bc and light jets

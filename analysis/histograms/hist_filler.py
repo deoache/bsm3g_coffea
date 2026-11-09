@@ -37,11 +37,18 @@ def get_variable_array(histogram, histogram_config, variable, variables_map, flo
         )
     else:
         variable_array = normalize(variables_map[variable])
+
     return variable_array
 
 
 def fill_histogram(
-    histograms, histogram_config, variables_map, category, weights, variation, flow=True
+    histograms,
+    histogram_config,
+    variables_map,
+    category,
+    weights,
+    variation,
+    flow=True,
 ):
     if histogram_config.layout == "individual":
         for variable in histograms:
@@ -101,13 +108,15 @@ def fill_histograms(
     histogram_config,
     variables_map,
     category,
-    shift_name,
     flow,
     is_mc,
     weights_container,
+    shift_name,
 ):
-    if is_mc and (shift_name == "nominal"):
-        variations = ["nominal"] + list(weights_container.variations)
+    if shift_name is None:
+        variations = ["nominal"]
+        if is_mc:
+            variations += [*weights_container.variations]
         for variation in variations:
             if variation == "nominal":
                 region_weight = weights_container.weight()
@@ -122,18 +131,7 @@ def fill_histograms(
                 category=category,
                 flow=True,
             )
-    elif is_mc and (shift_name != "nominal"):
-        region_weight = weights_container.weight()
-        fill_histogram(
-            histograms=histograms,
-            histogram_config=histogram_config,
-            variables_map=variables_map,
-            weights=region_weight,
-            variation=shift_name,
-            category=category,
-            flow=True,
-        )
-    elif not is_mc and (shift_name == "nominal"):
+    else:
         region_weight = weights_container.weight()
         fill_histogram(
             histograms=histograms,

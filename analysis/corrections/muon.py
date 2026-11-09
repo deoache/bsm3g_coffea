@@ -6,12 +6,7 @@ from typing import Type
 from pathlib import Path
 from .utils import unflat_sf
 from coffea.analysis_tools import Weights
-from analysis.corrections.utils import pog_years, get_pog_json, get_muon_hlt_json
-
-
-# https://twiki.cern.ch/twiki/bin/view/CMS/MuonUL2016
-# https://twiki.cern.ch/twiki/bin/view/CMS/MuonUL2017
-# https://twiki.cern.ch/twiki/bin/view/CMS/MuonUL2018
+from analysis.corrections import correction_files
 
 
 class MuonCorrector:
@@ -57,7 +52,7 @@ class MuonCorrector:
 
         # define correction set
         self.cset = correctionlib.CorrectionSet.from_file(
-            get_pog_json(json_name="muon", year=year)
+            correction_files["muon"][year]
         )
         self.year = year
         year_key_map = {
@@ -66,10 +61,10 @@ class MuonCorrector:
             "2022preEE": "2022",
             "2022postEE": "2022",
             "2023preBPix": "2023",
-            "2023postBPix": "2023"
+            "2023postBPix": "2023",
         }
         self.year_key = year_key_map.get(year, year)
-        self.run_key = "Run3" if self.year_key in ["2022", "2023"] or year == "2024" else "Run2"
+        self.run_key = "Run3" if self.year.startswith("202") else "Run2"
 
     def add_reco_weight(self):
         """
@@ -324,9 +319,9 @@ class MuonCorrector:
             if kind == "double":
                 # for double muon events, compute SF from muons' efficiencies
                 double_cset = correctionlib.CorrectionSet.from_file(
-                    get_muon_hlt_json(year=self.year)
+                    correction_files["muon_hlt"][self.year]
                 )
-    
+
                 data_eff = double_cset["Muon-HLT-DataEff"].evaluate(
                     self.variation,
                     sfs_keys[self.year],
@@ -338,7 +333,7 @@ class MuonCorrector:
                 data_eff_1 = ak.firsts(data_eff)
                 data_eff_2 = ak.pad_none(data_eff, target=2)[:, 1]
                 full_data_eff = data_eff_1 + data_eff_2 - data_eff_1 * data_eff_2
-    
+
                 mc_eff = double_cset["Muon-HLT-McEff"].evaluate(
                     self.variation,
                     sfs_keys[self.year],
@@ -350,9 +345,9 @@ class MuonCorrector:
                 mc_eff_1 = ak.firsts(mc_eff)
                 mc_eff_2 = ak.pad_none(mc_eff, target=2)[:, 1]
                 full_mc_eff = mc_eff_1 + mc_eff_2 - mc_eff_1 * mc_eff_2
-    
+
                 nominal_sf = full_data_eff / full_mc_eff
-    
+
             if self.variation == "nominal":
                 # get 'up' and 'down' scale factors
                 if kind == "single":

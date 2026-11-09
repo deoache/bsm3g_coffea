@@ -1,169 +1,214 @@
+import copy
 import correctionlib
 import numpy as np
 import awkward as ak
+from pathlib import Path
+from analysis.corrections import correction_files
 from analysis.corrections.met import corrected_polar_met
 
 
-# Official CVMFS repository mapping per year/campaign
-REPO_DICT = {
-    "2026": "Run3-26Prompt-Summer24-NanoAODv15",
-    "2025": "Run3-25Prompt-Summer24-NanoAODv15",
-    "2024": "Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15",
-    "2023": "Run3-23CSep23-Summer23-NanoAODv12",
-    "2023preBPix": "Run3-23CSep23-Summer23-NanoAODv12",
-    "2023postBPix": "Run3-23DSep23-Summer23BPix-NanoAODv12",
-    "2022": "Run3-22CDSep23-Summer22-NanoAODv12",
-    "2022preEE": "Run3-22CDSep23-Summer22-NanoAODv12",
-    "2022postEE": "Run3-22EFGSep23-Summer22EE-NanoAODv12",
-    "2018": "Run2-2018-UL-NanoAODv15",
-    "2017": "Run2-2017-UL-NanoAODv15",
-    "2016postVFP": "Run2-2016postVFP-UL-NanoAODv15",
-    "2016preVFP": "Run2-2016preVFP-UL-NanoAODv15",
-}
+def filter_boundaries(pt_corr, pt, nested=True):
+    if not nested:
+        pt_corr = np.asarray(pt_corr)
+        pt = np.asarray(pt)
 
+    # Check for pt values outside the range
+    outside_bounds = (pt < 20) | (pt > 250)
 
-def filter_boundaries(pt_corr, pt):
-    """
-    Filters out-of-bounds ([10, 500] GeV) or NaN values produced by the corrector,
-    replacing them with the uncorrected (raw) pT.
-    """
-    outside_bounds = (pt < 10) | (pt > 500)
-    pt_corr = ak.where(outside_bounds, pt, pt_corr)
-    pt_corr = ak.where(np.isnan(pt_corr), pt, pt_corr)
+    if nested:
+        n_pt_outside = ak.sum(ak.any(outside_bounds, axis=-1))
+    else:
+        n_pt_outside = np.sum(outside_bounds)
+
+    if n_pt_outside > 0:
+        # print(
+        #    f"There are {n_pt_outside} events with muon pt outside of [26,200] GeV. "
+        #    "Setting those entries to their initial value."
+        # )
+        pt_corr = np.where(pt > 250, pt, pt_corr)
+        pt_corr = np.where(pt < 20, pt, pt_corr)
+
+    # Check for NaN entries in pt_corr
+    nan_entries = np.isnan(pt_corr)
+
+    if nested:
+        n_nan = ak.sum(ak.any(nan_entries, axis=-1))
+    else:
+        n_nan = np.sum(nan_entries)
+
+    if n_nan > 0:
+        # print(
+        #    f"There are {n_nan} nan entries in the corrected pt. "
+        #    "This might be due to the number of tracker layers hitting boundaries. "
+        #    "Setting those entries to their initial value."
+        # )
+        pt_corr = np.where(np.isnan(pt_corr), pt, pt_corr)
+
     return pt_corr
 
 
 def apply_electron_ss_corrections(
-    events: ak.Array,
-    year: str,
-    seed: int = 42,
-    obj_type: str = "Ele",
+    events: ak.Array, year: str, shifts: dict, corrections_config: dict
 ):
-    if year not in REPO_DICT:
-        raise KeyError(
-            f"Year '{year}' is not mapped in REPO_DICT for CVMFS. "
-            f"Available options: {list(REPO_DICT.keys())}"
-        )
+    """
+    Apply electron scale and smearing corrections for Run3
 
-    # 1. Build CVMFS path following EGM POG standard conventions
-    subfolder = "electron" if obj_type == "Ele" else "photon"
-    json_path = f"/cvmfs/cms-griddata.cern.ch/cat/metadata/EGM/{REPO_DICT[year]}/latest/{subfolder}SS_EtDependent.json.gz"
+    from docs https://egammapog.docs.cern.ch/Run3/SaS/
 
-    cset = correctionlib.CorrectionSet.from_file(json_path)
+    The purpose of scale and smearing (more formal: energy scale and resolution corrections) is to correct and calibrate electron and photon energies in data and MC. This step is performed after the MC-based semi-parametric EGamma energy regression, which is applied to both MC and data (aiming to correct for inherent imperfections that are not in principle related to data/MC differences like crystal-by-crystal differences, intermodule gaps, ...). The remaining differences between the electron and photon energy scales and the resolution in the data and simulation need to be corrected for. To address this, a multistep procedure is implemented to calibrate the residual energy scale in data. Additionally, an extra smearing is applied to the electron or photon energy in simulation to ensure that the energy resolution matches that observed in data
 
-    # Standard evaluators in official CVMFS JSONs
-    scale_evaluator = cset.compound["Scale"]
-    smear_evaluator = cset["SmearAndSyst"]
+    https://gitlab.cern.ch/cms-analysis-corrections/EGM/examples/-/blob/latest/egmScaleAndSmearingExample.py
+    """
+    cset = correctionlib.CorrectionSet.from_file(correction_files["electron_ss"][year])
 
-    # 2. Store raw variables
-    events["Electron", "pt_raw"] = events.Electron.pt
-    events["PuppiMET", "pt_raw"] = events.PuppiMET.pt
-    events["PuppiMET", "phi_raw"] = events.PuppiMET.phi
-
-    # 3. Prepare electron variables
+    events["Electron", "pt_raw"] = ak.ones_like(events.Electron.pt) * events.Electron.pt
     electrons = events.Electron
-    counts = ak.num(electrons)
+    counts = ak.num(events.Electron)
 
-    # Flatten collections for clean vectorized calls with correctionlib
-    flat_pt = ak.flatten(electrons.pt_raw)
-    flat_r9 = ak.flatten(electrons.r9)
-    # Supercluster Eta = eta + deltaEtaSC
-    flat_sc_eta = ak.flatten(electrons.eta + electrons.deltaEtaSC)
-    flat_gain = ak.flatten(electrons.seedGain)
-    flat_run = ak.flatten(ak.broadcast_arrays(events.run, electrons.pt_raw)[0])
-
-    is_mc = hasattr(events, "genWeight")
-
-    if is_mc:
-        # --- MC: SMEARING AND SYSTEMATICS ---
-        # Smearing width evaluator: ("smear", pt, r9, ScEta)
-        smear_width = smear_evaluator.evaluate(
-            "smear",
-            ak.to_numpy(flat_pt),
-            ak.to_numpy(flat_r9),
-            ak.to_numpy(flat_sc_eta),
-        )
-
-        # Stochastic Gaussian random number generator N(0,1)
-        rng = np.random.default_rng(seed=seed)
-        random_numbers = rng.normal(loc=0.0, scale=1.0, size=len(flat_pt))
-
-        # Nominal smearing
-        smearing_factor = 1.0 + smear_width * random_numbers
-        flat_pt_corrected = flat_pt * smearing_factor
-
-        # Smearing uncertainties (Up / Down)
-        smear_up = smear_evaluator.evaluate(
-            "smear_up",
-            ak.to_numpy(flat_pt),
-            ak.to_numpy(flat_r9),
-            ak.to_numpy(flat_sc_eta),
-        )
-        smear_down = smear_evaluator.evaluate(
-            "smear_down",
-            ak.to_numpy(flat_pt),
-            ak.to_numpy(flat_r9),
-            ak.to_numpy(flat_sc_eta),
-        )
-
-        # Prevent unphysical negative smearing widths
-        smear_down = np.maximum(smear_down, 0.0)
-
-        smearing_up = 1.0 + smear_up * random_numbers
-        smearing_down = 1.0 + smear_down * random_numbers
-
-        # Scale uncertainties (Up / Down in MC applied on top of smeared pT)
-        scale_up = smear_evaluator.evaluate(
-            "scale_up",
-            ak.to_numpy(flat_pt),
-            ak.to_numpy(flat_r9),
-            ak.to_numpy(flat_sc_eta),
-        )
-        scale_down = smear_evaluator.evaluate(
-            "scale_down",
-            ak.to_numpy(flat_pt),
-            ak.to_numpy(flat_r9),
-            ak.to_numpy(flat_sc_eta),
-        )
-
-        # Unflatten back to nested Awkward array structures
-        pt_corr = ak.unflatten(flat_pt_corrected, counts)
-        pt_smear_up = ak.unflatten(flat_pt * smearing_up, counts)
-        pt_smear_dn = ak.unflatten(flat_pt * smearing_down, counts)
-        pt_scale_up = ak.unflatten(scale_up * flat_pt_corrected, counts)
-        pt_scale_dn = ak.unflatten(scale_down * flat_pt_corrected, counts)
-
-        # Apply boundary checks and store variations in events
-        events["Electron", "pt"] = filter_boundaries(pt_corr, events.Electron.pt_raw)
-        events["Electron", "pt_smear_up"] = filter_boundaries(pt_smear_up, events.Electron.pt_raw)
-        events["Electron", "pt_smear_down"] = filter_boundaries(pt_smear_dn, events.Electron.pt_raw)
-        events["Electron", "pt_scale_up"] = filter_boundaries(pt_scale_up, events.Electron.pt_raw)
-        events["Electron", "pt_scale_down"] = filter_boundaries(pt_scale_dn, events.Electron.pt_raw)
-
-    else:
-        # --- DATA: SCALE CORRECTION ---
-        # Scale evaluator: ("scale", run, ScEta, r9, pt, seedGain)
-        scale_factor = scale_evaluator.evaluate(
-            "scale",
-            ak.to_numpy(flat_run),
-            ak.to_numpy(flat_sc_eta),
-            ak.to_numpy(flat_r9),
-            ak.to_numpy(flat_pt),
-            ak.to_numpy(flat_gain),
-        )
-
-        flat_pt_corrected = scale_factor * flat_pt
-        pt_corr = ak.unflatten(flat_pt_corrected, counts)
-
-        events["Electron", "pt"] = filter_boundaries(pt_corr, events.Electron.pt_raw)
-
-    # 4. Propagate corrections to PuppiMET (nominal)
-    met_pt, met_phi = corrected_polar_met(
-        met_pt=events.PuppiMET.pt_raw,
-        met_phi=events.PuppiMET.phi_raw,
-        other_phi=events.Electron.phi,
-        other_pt_old=events.Electron.pt_raw,
-        other_pt_new=events.Electron.pt,
+    flat_ele = ak.flatten(electrons)
+    seedgain = flat_ele.seedGain
+    run = np.repeat(events.run, counts)
+    sceta = (
+        flat_ele.superclusterEta
+        if year == "2024"
+        else flat_ele.eta + flat_ele.deltaEtaSC
     )
-    events["PuppiMET", "pt"] = met_pt
-    events["PuppiMET", "phi"] = met_phi
+    r9 = flat_ele.r9
+    pt = flat_ele.pt
+
+    if hasattr(events, "genWeight"):
+        # for MC, we apply the smearing correction
+        smear = cset["SmearAndSyst"].evaluate("smear", pt, r9, sceta)
+        rng = np.random.default_rng(seed=42)
+        random_numbers = rng.normal(loc=0.0, scale=1.0, size=len(pt))
+        smearing = 1 + smear * random_numbers
+        pt_corrected = pt * smearing
+    else:
+        # the scale correction is applied to data
+        scale = cset.compound["Scale"].evaluate("scale", run, sceta, r9, pt, seedgain)
+        pt_corrected = pt * scale
+
+    # add nominal correction to shifts
+    electrons["pt"] = ak.unflatten(pt_corrected, counts)
+    for i in range(len(shifts)):
+        shifts[i][0]["Electron"] = electrons
+
+    # Propagate tau pT changes to MET
+    nominal_met, met = copy.copy(shifts[0][0]["MET"]), copy.copy(shifts[0][0]["MET"])
+    corrected_met_pt, corrected_met_phi = corrected_polar_met(
+        met_pt=nominal_met.pt,
+        met_phi=nominal_met.phi,
+        other_phi=electrons.phi,
+        other_pt_old=electrons.pt_raw,
+        other_pt_new=electrons.pt,
+    )
+    nominal_met["pt"] = corrected_met_pt
+    nominal_met["phi"] = corrected_met_phi
+    # update nominal MET
+    shifts[0][0]["MET"] = nominal_met
+
+    # scale and smearing uncertainties should be evaluated on the original MC only
+    if corrections_config["apply_obj_syst"]:
+        ele_smear_up, ele_smear_down = events.Electron, events.Electron
+        ele_scale_up, ele_scale_down = events.Electron, events.Electron
+
+        if hasattr(events, "genWeight"):
+            # Obtain the uncertainty on the smearing width using MC original variables (pt, r9, and ScEta).
+            unc_smear = cset["SmearAndSyst"].evaluate("smear", pt, r9, sceta)
+            smear_up = cset["SmearAndSyst"].evaluate("smear", pt, r9, sceta)
+            smear_down = cset["SmearAndSyst"].evaluate("smear", pt, r9, sceta)
+
+            # In 2022, the "smear_down" variation can lead to negative smearing width in some cases, which is unphysical.
+            # Therefore, we use max(smear - unc_smear, 0) to ensure the smearing width is non-negative.
+            smearing_up = 1 + smear_up * random_numbers
+            smearing_down = 1 + smear_down * random_numbers
+
+            ele_smear_up["pt"] = ak.unflatten(pt * smearing_up, counts)
+            ele_smear_down["pt"] = ak.unflatten(pt * smearing_down, counts)
+
+            # the scale uncertainty, is also evaluated on MC original variables (pt, r9, and ScEta) BUT applied on the smeared pt
+            unc_scale = cset["SmearAndSyst"].evaluate("escale", pt, r9, sceta)
+            scale_up = cset["SmearAndSyst"].evaluate("scale_up", pt, r9, sceta)
+            scale_down = cset["SmearAndSyst"].evaluate("scale_down", pt, r9, sceta)
+
+            ele_scale_up["pt"] = ak.unflatten(scale_up * pt_corrected, counts)
+            ele_scale_down["pt"] = ak.unflatten(scale_down * pt_corrected, counts)
+
+        # Propagate tau pT changes to MET
+        met_scale_up, met_scale_down = met, met
+        met_scale_up["pt"], met_scale_up["phi"] = corrected_polar_met(
+            met_pt=met_scale_up.pt,
+            met_phi=met_scale_up.phi,
+            other_phi=ele_scale_up.phi,
+            other_pt_old=ele_scale_up.pt_raw,
+            other_pt_new=ele_scale_up.pt,
+        )
+        met_scale_down["pt"], met_scale_down["phi"] = corrected_polar_met(
+            met_pt=met_scale_down.pt,
+            met_phi=met_scale_down.phi,
+            other_phi=ele_scale_down.phi,
+            other_pt_old=ele_scale_down.pt_raw,
+            other_pt_new=ele_scale_down.pt,
+        )
+
+        met_smear_up, met_smear_down = met, met
+        met_smear_up["pt"], met_smear_up["phi"] = corrected_polar_met(
+            met_pt=met_smear_up.pt,
+            met_phi=met_smear_up.phi,
+            other_phi=ele_smear_up.phi,
+            other_pt_old=ele_smear_up.pt_raw,
+            other_pt_new=ele_smear_up.pt,
+        )
+        met_smear_down["pt"], met_smear_down["phi"] = corrected_polar_met(
+            met_pt=met_smear_down.pt,
+            met_phi=met_smear_down.phi,
+            other_phi=ele_smear_down.phi,
+            other_pt_old=ele_smear_down.pt_raw,
+            other_pt_new=ele_smear_down.pt,
+        )
+
+        shifts += [
+            (
+                {
+                    "Jet": shifts[0][0]["Jet"],
+                    "MET": met_scale_up,
+                    "Muon": shifts[0][0]["Muon"],
+                    "Electron": ele_scale_up,
+                },
+                f"CMS_scale_e_{year[:4]}Up",
+            )
+        ]
+        shifts += [
+            (
+                {
+                    "Jet": shifts[0][0]["Jet"],
+                    "MET": met_scale_down,
+                    "Muon": shifts[0][0]["Muon"],
+                    "Electron": ele_scale_down,
+                },
+                f"CMS_scale_e_{year[:4]}Down",
+            )
+        ]
+        shifts += [
+            (
+                {
+                    "Jet": shifts[0][0]["Jet"],
+                    "MET": met_smear_up,
+                    "Muon": shifts[0][0]["Muon"],
+                    "Electron": ele_smear_up,
+                },
+                f"CMS_res_e_{year[:4]}Up",
+            )
+        ]
+        shifts += [
+            (
+                {
+                    "Jet": shifts[0][0]["Jet"],
+                    "MET": met_smear_down,
+                    "Muon": shifts[0][0]["Muon"],
+                    "Electron": ele_smear_down,
+                },
+                f"CMS_res_e_{year[:4]}Down",
+            )
+        ]
+    return shifts

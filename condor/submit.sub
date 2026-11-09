@@ -11,7 +11,5 @@ request_memory        = MEMORY
 request_cpus          = CPUS 
 
 +JobFlavour           = "longlunch"
-+SingularityImage     = "/cvmfs/unpacked.cern.ch/registry.hub.docker.com/coffeateam/coffea-dask-almalinux9:2026.5.0-py3.13"
-+SingularityBind      = "/afs/cern.ch/user/d/driosper/bsm3g_coffea/analysis/filesets/xrootd.py:/usr/local/lib/python3.13/site-packages/fsspec_xrootd/xrootd.py"
 
 Queue JOBNUM from JOBNUM_FILE

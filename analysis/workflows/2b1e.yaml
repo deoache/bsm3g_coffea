@@ -5,7 +5,7 @@ datasets:
     - dy_inclusive
     - singletop
     - tt
-    - wjets_ht
+    - wjets_inclusive
     - diboson
 object_selection:
   electrons:
@@ -102,18 +102,19 @@ corrections:
     - jets
     - jets_veto
     - muons
+    - electrons
     - taus
     - met
-  apply_obj_syst: false
+  apply_obj_syst: true
   event_weights:
     genWeight: true
     pileupWeight: true
-    l1prefiringWeight: true
+    l1prefiringWeight: false
     lhepdfWeight: true
     lhescaleWeight: true
     partonshowerWeight: true
     topPtWeight: true
-    topBoostWeight: true
+    topBoostWeight: false
     pujetid: 
       - id: tight
     btagging: 

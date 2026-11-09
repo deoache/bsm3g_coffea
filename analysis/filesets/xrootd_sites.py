@@ -23,7 +23,7 @@ xroot_to_site =  {
     "root://cmsio2.rc.ufl.edu:1094": "T2_US_Florida",
     "root://t2dsk0011.cmsaf.mit.edu:1094": "T2_US_MIT",
     "root://xrootd.cmsaf.mit.edu:1094": "T2_US_MIT",
-    "root://ruhex-osgce.rutgers.edu": "T3_US_Rutgers",
+#    "root://ruhex-osgce.rutgers.edu": "T3_US_Rutgers", # this site has recurrent xrd problems
     "root://se.cis.gov.pl:1094": "T2_PL_Swierk",
     "root://hactar01.crc.nd.edu": "T3_US_NotreDame",
     "root://skynet013.crc.nd.edu": "T3_US_NotreDame",

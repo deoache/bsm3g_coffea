@@ -31,3 +31,7 @@ deepJet:
     loose: 0.048
     medium: 0.2435
     tight: 0.6563
+  2024:
+    loose: 0.048
+    medium: 0.2435
+    tight: 0.6563

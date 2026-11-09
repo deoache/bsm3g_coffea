@@ -37,7 +37,7 @@ from notebooks.utils import (
 )
 
 
-ALL_YEARS = ["2022preEE", "2022postEE", "2023preBPix", "2023postBPix"]
+ALL_YEARS = ["2022preEE", "2022postEE", "2023preBPix", "2023postBPix", "2024"]
 WORKFLOWS = ["2b1mu", "2b1e", "1b1mu1e", "1b1e1mu"]
 PROCS = ["DYJetsToLL", "SingleTop", "Diboson", "WJetsToLNu", "tt"]
 SR_TO_CRS = {

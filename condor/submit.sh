@@ -8,23 +8,30 @@ X509PATH=$3
 export XRD_NETWORKSTACK=IPv4
 export XRD_RUNFORKHANDLER=1
 export X509_USER_PROXY=$X509PATH
-export XRD_STREAMTIMEOUT=600
+export XRD_REQUESTTIMEOUT=300
+export XRD_STREAMTIMEOUT=300
+export XRD_CONNECTIONTIMEOUT=60
 export XRD_CONNECTIONRETRY=5
-export XRD_CONNECTIONTIMEOUT=120
-export XRD_REQUESTTIMEOUT=600
 
 # Print proxy certificate details to verify validity and VOMS attributes
 voms-proxy-info -all -file $X509PATH
 
 # Save the current working directory where JSON configuration files are expected to be
+LCG_SETUP="/cvmfs/sft.cern.ch/lcg/views/LCG_110/x86_64-el9-gcc13-opt/setup.sh"
+source "$LCG_SETUP" > /dev/null 2>&1
 WORKDIR=`pwd`
 
 # Declare an associative array (dictionary) to hold job parameters
 declare -A ARGS
 
 
-for key in workflow year output_path output_format dataset workers skipbadfiles; do
-    ARGS[$key]=$(python3 -c "import json; print(json.load(open('$WORKDIR/arguments.json')).get('$key', ''))")
+#for key in workflow year output_path output_format dataset executor workers skipbadfiles; do
+#    ARGS[$key]=$(python3 -c "import json; print(json.load(open('$WORKDIR/arguments.json')).get('$key', ''))")
+#done
+
+# Extract specific job parameters from arguments.json
+for key in workflow year output_path output_format dataset executor workers skipbadfiles; do
+    ARGS[$key]=$(python3 -c "import json; print(json.load(open('$WORKDIR/arguments.json'))['$key'])")
 done
 
 # Build the full set of command-line parameters for submit.py (Add the JOBID suffix to the dataset name to uniquely identify the output)
