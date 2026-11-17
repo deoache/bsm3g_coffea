@@ -55,8 +55,8 @@ if __name__ == "__main__":
         "--output_format",
         type=str,
         default="coffea",
-        choices=["coffea"],
-        help="format of output histogram",
+        choices=["coffea", "parquet"],
+        help="format of output file",
     )
     parser.add_argument(
         "-l",

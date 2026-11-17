@@ -26,7 +26,98 @@ def move_proxy() -> str:
     return x509_path
 
 
-def submit_condor(args):
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-w",
+        "--workflow",
+        dest="workflow",
+        type=str,
+        choices=[
+            f.stem for f in (Path.cwd() / "analysis" / "workflows").glob("*.yaml")
+        ],
+        help="workflow config to submit",
+    )
+    parser.add_argument(
+        "-y",
+        "--year",
+        dest="year",
+        type=str,
+        choices=[
+            "2016preVFP",
+            "2016postVFP",
+            "2017",
+            "2018",
+            "2022preEE",
+            "2022postEE",
+            "2023preBPix",
+            "2023postBPix",
+            "2024",
+        ],
+        help="dataset year",
+    )
+    parser.add_argument(
+        "-d",
+        "--dataset",
+        dest="dataset",
+        type=str,
+        help="dataset",
+    )
+    parser.add_argument(
+        "--nfiles",
+        dest="nfiles",
+        type=int,
+        default=10,
+        help="number of root files to include in each dataset partition (default 10)",
+    )
+    parser.add_argument(
+        "--eos",
+        action="store_true",
+        help="Enable saving outputs to /eos",
+    )
+    parser.add_argument(
+        "--submit",
+        action="store_true",
+        help="Enable Condor job submission. If not provided, it just builds condor files",
+    )
+    parser.add_argument(
+        "--output_format",
+        type=str,
+        default="coffea",
+        choices=["coffea", "parquet"],
+        help="format of output histogram",
+    )
+    parser.add_argument(
+        "-l",
+        "--label",
+        type=str,
+        default="",
+        help="label for the output directory",
+    )
+    parser.add_argument(
+        "-m",
+        "--memory",
+        type=str,
+        default="4000",
+        help="Requested memory (in MB) for the condor job",
+    )
+    parser.add_argument(
+        "--global",
+        action="store_true",
+        help="send xrd-cms-global partition filesets",
+    )
+    parser.add_argument(
+        "-e",
+        "--executor",
+        dest="executor",
+        type=str,
+        default="futures",
+        help="executor to run the processor",
+    )
+    args = parser.parse_args()
+
+    
     """Build condor files. Optionally submit condor job"""
     print(f"Creating {args.workflow}-{args.year}-{args.dataset} condor file")
 
@@ -93,6 +184,7 @@ def submit_condor(args):
 
     # build and save arguments json
     args.output_path = str(make_output_directory(args))
+    args.user = os.environ["USER"]
     args_file = job_dir / "arguments.json"
     with open(args_file, "w") as json_file:
         json.dump(vars(args), json_file, indent=4)
@@ -118,95 +210,3 @@ def submit_condor(args):
 
     if args.submit:
         subprocess.run(["condor_submit", local_condor])
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-w",
-        "--workflow",
-        dest="workflow",
-        type=str,
-        choices=[
-            f.stem for f in (Path.cwd() / "analysis" / "workflows").glob("*.yaml")
-        ],
-        help="workflow config to submit",
-    )
-    parser.add_argument(
-        "-y",
-        "--year",
-        dest="year",
-        type=str,
-        choices=[
-            "2016preVFP",
-            "2016postVFP",
-            "2017",
-            "2018",
-            "2022preEE",
-            "2022postEE",
-            "2023preBPix",
-            "2023postBPix",
-            "2024",
-        ],
-        help="dataset year",
-    )
-    parser.add_argument(
-        "-d",
-        "--dataset",
-        dest="dataset",
-        type=str,
-        help="dataset",
-    )
-    parser.add_argument(
-        "--nfiles",
-        dest="nfiles",
-        type=int,
-        default=10,
-        help="number of root files to include in each dataset partition (default 10)",
-    )
-    parser.add_argument(
-        "--eos",
-        action="store_true",
-        help="Enable saving outputs to /eos",
-    )
-    parser.add_argument(
-        "--submit",
-        action="store_true",
-        help="Enable Condor job submission. If not provided, it just builds condor files",
-    )
-    parser.add_argument(
-        "--output_format",
-        type=str,
-        default="coffea",
-        choices=["coffea", "root"],
-        help="format of output histogram",
-    )
-    parser.add_argument(
-        "-l",
-        "--label",
-        type=str,
-        default="",
-        help="label for the output directory",
-    )
-    parser.add_argument(
-        "-m",
-        "--memory",
-        type=str,
-        default="4000",
-        help="Requested memory (in MB) for the condor job",
-    )
-    parser.add_argument(
-        "--global",
-        action="store_true",
-        help="send xrd-cms-global partition filesets",
-    )
-    parser.add_argument(
-        "-e",
-        "--executor",
-        dest="executor",
-        type=str,
-        default="futures",
-        help="executor to run the processor",
-    )
-    args = parser.parse_args()
-    submit_condor(args)

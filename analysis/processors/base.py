@@ -4,6 +4,7 @@ import numpy as np
 import awkward as ak
 from coffea import processor
 from coffea.analysis_tools import PackedSelection, Weights
+from analysis.utils import dump_parquet
 from analysis.workflows.config import WorkflowConfigBuilder
 from analysis.histograms import HistBuilder, fill_histograms
 from analysis.corrections import (
@@ -30,12 +31,21 @@ def update(events, collections):
 
 
 class BaseProcessor(processor.ProcessorABC):
-    def __init__(self, workflow: str, year: str = "2017", mode="virtual"):
+    def __init__(
+        self,
+        workflow: str,
+        year: str,
+        output_format: str,
+        output_location: str,
+        mode="virtual",
+    ):
         assert mode in ["eager", "virtual", "dask"]
         self._mode = mode
         self.year = year
         self.workflow = workflow
         self.year_key = year[:4]
+        self.output_format = output_format
+        self.output_location = output_location
         self.run = "2" if year.startswith("201") else "3"
 
         config_builder = WorkflowConfigBuilder(workflow=workflow)
@@ -144,26 +154,45 @@ class BaseProcessor(processor.ProcessorABC):
                         {"weighted_final_nevents": weighted_final_nevents}
                     )
 
-                # evaluate variables required by the histogram layout
+                # Evaluate variables required by the histogram layout
                 variables_map = {}
-                layout_axes = self.histogram_config.layout.values()
+                layout = self.histogram_config.layout
+                if layout != "individual":
+                    layout_axes = {
+                        variable
+                        for variables in layout.values()
+                        for variable in variables
+                    }
                 for variable, axis in self.histogram_config.axes.items():
-                    if variable in ak.flatten(layout_axes):
-                        variables_map[variable] = eval(axis.expression)[category_mask]
+                    if layout != "individual" and variable not in layout_axes:
+                        continue
+                    variables_map[variable] = eval(axis.expression)[category_mask]
 
-                # fill histograms for the current category and systematic variation
-                fill_histograms(
-                    histogram_config=self.histogram_config,
-                    weights_container=weights_container,
-                    variables_map=variables_map,
-                    histograms=histograms,
-                    shift_name=shift_name,
-                    category=category,
-                    is_mc=self.is_mc,
-                    flow=self.histogram_config.flow,
-                )
-
-        output["histograms"] = histograms
+                if self.output_format == "coffea":
+                    # fill histograms for the current category and systematic variation
+                    fill_histograms(
+                        histogram_config=self.histogram_config,
+                        weights_container=weights_container,
+                        variables_map=variables_map,
+                        histograms=histograms,
+                        shift_name=shift_name,
+                        category=category,
+                        is_mc=self.is_mc,
+                        flow=self.histogram_config.flow,
+                    )
+                elif self.output_format == "parquet":
+                    dump_parquet(
+                        events=events,
+                        weights_container=weights_container,
+                        variables_map=variables_map,
+                        workflow=self.workflow,
+                        year=year,
+                        category=category,
+                        output_location=self.output_location,
+                        shift=shift_name,
+                    )
+        if self.output_format == "coffea":
+            output["histograms"] = histograms
         return output
 
     def postprocess(self, accumulator):

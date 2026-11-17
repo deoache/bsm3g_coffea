@@ -3,54 +3,8 @@ import argparse
 from pathlib import Path
 from coffea import processor
 from coffea.util import save
-from coffea.nanoevents import NanoAODSchema
-from analysis.utils import write_root
 from analysis.processors.base import BaseProcessor
-
-
-def main(args):
-    with open(args.partition_json) as f:
-        partition_fileset = json.load(f)
-    # Configure the Runner using coffea 2024+ API
-    if args.executor == "futures":
-        futures_run = processor.Runner(
-            executor=processor.FuturesExecutor(
-                workers=4, compression=None, retries=6
-            ),
-            schema=NanoAODSchema,
-            # chunksize=100000,
-            savemetrics=False,
-            xrootdtimeout=120,
-            align_clusters=True,
-            skipbadfiles=False,
-        )
-        # Execute processing job using the Runner instance
-        out = futures_run(
-            partition_fileset,
-            treename="Events",
-            processor_instance=BaseProcessor(
-                workflow=args.workflow, year=args.year, mode="virtual"
-            ),
-        )
-    elif args.executor == "iterative":
-        iterative_run = processor.Runner(
-            executor=processor.IterativeExecutor(compression=None),
-            schema=NanoAODSchema,
-            savemetrics=False,
-        )
-        out = iterative_run(
-            partition_fileset,
-            processor_instance=BaseProcessor(
-                workflow=args.workflow, year=args.year, mode="virtual"
-            ),
-        )
-
-    savepath = f"{args.output_path}/{args.dataset}"
-    if args.output_format == "coffea":
-        save(out, f"{savepath}.coffea")
-    elif args.output_format == "root":
-        write_root(out, savepath, args)
-
+from coffea.nanoevents import NanoEventsFactory, NanoAODSchema
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -105,13 +59,13 @@ if __name__ == "__main__":
         "--output_format",
         type=str,
         default="coffea",
-        choices=["coffea", "root"],
+        choices=["coffea", "parquet"],
         help="format of output histogram",
     )
     parser.add_argument(
-        "--global",
-        action="store_true",
-        help="send xrd-cms-global partition filesets",
+        "--user",
+        type=str,
+        help="User name",
     )
     parser.add_argument(
         "-e",
@@ -122,4 +76,53 @@ if __name__ == "__main__":
         help="executor to run the processor",
     )
     args = parser.parse_args()
-    main(args)
+
+    # load partition_fileset
+    with open(args.partition_json) as f:
+        partition_fileset = json.load(f)
+
+    # set output location and get partition key (used when --output_format parquet)
+    output_location = f"root://eosuser.cern.ch//eos/user/{args.user[0]}/{args.user}/bsm3g_coffea_outputs/"
+
+    # Configure the Runner using coffea 2024+ API
+    if args.executor == "futures":
+        futures_run = processor.Runner(
+            executor=processor.FuturesExecutor(workers=4, compression=None, retries=6),
+            schema=NanoAODSchema,
+            # chunksize=100000,
+            savemetrics=False,
+            xrootdtimeout=120,
+            align_clusters=True,
+            skipbadfiles=False,
+        )
+        # Execute processing job using the Runner instance
+        out = futures_run(
+            partition_fileset,
+            treename="Events",
+            processor_instance=BaseProcessor(
+                workflow=args.workflow,
+                year=args.year,
+                output_format=args.output_format,
+                output_location=output_location,
+                mode="virtual",
+            ),
+        )
+    elif args.executor == "iterative":
+        iterative_run = processor.Runner(
+            executor=processor.IterativeExecutor(compression=None),
+            schema=NanoAODSchema,
+            savemetrics=False,
+        )
+        out = iterative_run(
+            partition_fileset,
+            processor_instance=BaseProcessor(
+                workflow=args.workflow,
+                year=args.year,
+                output_format=args.output_format,
+                output_location=output_location,
+                mode="virtual",
+            ),
+        )
+    savepath = f"{args.output_path}/{args.dataset}"
+    if args.output_format in ["coffea", "parquet"]:
+        save(out, f"{savepath}.coffea")
