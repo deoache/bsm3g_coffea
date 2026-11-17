@@ -1,25 +1,29 @@
 """
 Inspect Condor job outputs, identify missing jobs, analyze recent XRootD
-failures, and optionally regenerate input filesets with problematic sites
-blacklisted before resubmitting only the missing jobs.
+failures, regenerate input files for missing partitions with partition-specific
+site blacklists, and optionally resubmit missing jobs.
 """
-
 import re
 import sys
-import yaml
 import json
+import yaml
 import select
 import argparse
 import subprocess
 from pathlib import Path
-from collections import defaultdict
 from urllib.parse import urlsplit
 from datetime import datetime, timedelta
 from analysis.utils import make_output_directory
 from analysis.filesets.xrootd_sites import xroot_to_site
 from analysis.filesets.utils import divide_list
 
+
 ENDPOINT_PATTERN = r"root://[a-zA-Z0-9._-]+(?::\d+)?"
+
+ROOT_URL_PATTERN = re.compile(
+    r"""root://[^\s'"<>(),]+?\.root(?=[\s'",)]|$)""",
+    flags=re.IGNORECASE,
+)
 
 EXECUTOR_ERROR_PATTERNS = {
     "Authentication": [
@@ -81,17 +85,6 @@ ERROR_PATTERNS = {
 }
 
 
-def find_nano_fileset(fileset_dir: Path, year: str) -> Path | None:
-    """Find the existing NanoAOD-versioned fileset for a year, if present."""
-    matches = sorted(fileset_dir.glob(f"fileset_{year}_NANO_lxplus.json"))
-    if len(matches) > 1:
-        raise RuntimeError(
-            f"Multiple NanoAOD filesets found for {year}: "
-            + ", ".join(path.name for path in matches)
-        )
-    return matches[0] if matches else None
-
-
 def parse_args():
     """Parse command-line arguments."""
     workflows_dir = Path.cwd() / "analysis" / "workflows"
@@ -134,31 +127,6 @@ def parse_args():
         help="Output format of the produced histograms",
     )
     parser.add_argument(
-        "--eos",
-        action="store_true",
-        help="Read job outputs from EOS instead of local storage",
-    )
-    parser.add_argument(
-        "--global",
-        dest="use_global",
-        action="store_true",
-        help="Replace URLs only in missing partitions with the CMS global redirector",
-    )
-    parser.add_argument(
-        "-m",
-        "--memory",
-        type=str,
-        default="4000",
-        help="Requested memory (in MB) for Condor jobs",
-    )
-    parser.add_argument(
-        "-l",
-        "--label",
-        type=str,
-        default="",
-        help="Output directory label",
-    )
-    parser.add_argument(
         "--hours_ago",
         type=int,
         default=8,
@@ -176,13 +144,35 @@ def parse_args():
         help="Show detailed XRootD error diagnostics",
     )
     parser.add_argument(
-        "-e",
         "--executor",
         choices=["iterative", "futures"],
         default="futures",
-        help="Executor to use when rerunning the workflow",
+        help="Executor to use when updating dataset arguments",
+    )
+    parser.add_argument(
+        "-e",
+        "--update_executor",
+        action="store_true",
+        help="Update the executor in arguments.json for affected datasets",
     )
 
+    parser.add_argument(
+        "--by_dataset",
+        action="store_true",
+        help="Diagnose and regenerate separately per dataset instead of using an era-wide blacklist",
+    )
+    parser.add_argument(
+        "--eos",
+        action="store_true",
+        help="Read job outputs from EOS instead of local storage",
+    )
+    parser.add_argument(
+        "-l",
+        "--label",
+        type=str,
+        default="",
+        help="Output directory label",
+    )
     return parser.parse_args()
 
 
@@ -207,20 +197,44 @@ def timed_input(prompt, timeout=10, default="y"):
 def modify_site_list(year: str, site: str, status: str) -> None:
     """Move a site to either the white or black list in the year's YAML file."""
     sites_file = Path.cwd() / "analysis" / "filesets" / f"{year}_sites.yaml"
-    data = yaml.safe_load(sites_file.read_text())
+
+    if not sites_file.is_file():
+        raise FileNotFoundError(f"Site configuration not found: {sites_file}")
+
+    data = yaml.safe_load(sites_file.read_text(encoding="utf-8")) or {}
+    data.setdefault("white", [])
+    data.setdefault("black", [])
 
     if status == "white":
         if site not in data["white"]:
             data["white"].append(site)
         if site in data["black"]:
             data["black"].remove(site)
-    else:
+    elif status == "black":
         if site not in data["black"]:
             data["black"].append(site)
         if site in data["white"]:
             data["white"].remove(site)
+    else:
+        raise ValueError(f"Unknown site status: {status}")
 
-    sites_file.write_text(yaml.dump(data, default_flow_style=False))
+    sites_file.write_text(
+        yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
+        encoding="utf-8",
+    )
+
+
+def reset_site_blacklist(year: str) -> None:
+    """Clear the current blacklist using modify_site_list()."""
+    sites_file = Path.cwd() / "analysis" / "filesets" / f"{year}_sites.yaml"
+
+    if not sites_file.is_file():
+        raise FileNotFoundError(f"Site configuration not found: {sites_file}")
+
+    data = yaml.safe_load(sites_file.read_text(encoding="utf-8")) or {}
+
+    for site in list(data.get("black", [])):
+        modify_site_list(year, site, "white")
 
 
 def identify_error_types(content: str) -> set[str]:
@@ -232,16 +246,12 @@ def identify_error_types(content: str) -> set[str]:
     }
 
 
-def get_missing_job_partitions(job_dir: Path, dataset: str) -> set[str]:
-    """Read missing partition identifiers from missing.txt, if available."""
-    missing_path = Path(job_dir) / dataset / "missing.txt"
-
-    if not missing_path.is_file():
-        return set()
-
-    return {
-        line.strip() for line in missing_path.read_text().splitlines() if line.strip()
-    }
+def get_missing_job_partitions(
+    jobnum_missing: dict[str, set[str]],
+    dataset: str,
+) -> set[str]:
+    """Return the missing partition identifiers for a dataset."""
+    return set(jobnum_missing.get(dataset, set()))
 
 
 def get_partition_endpoints(
@@ -249,11 +259,11 @@ def get_partition_endpoints(
     missing_partitions: set[str],
     endpoint_pattern: re.Pattern,
 ) -> set[str]:
-    """Extract XRootD endpoints from the specified missing partitions."""
+    """Extract XRootD endpoints from the specified partitions."""
     endpoints = set()
 
     for partition_id in missing_partitions:
-        partition_data = partitions_data.get(partition_id, {})
+        partition_data = partitions_data.get(str(partition_id), {})
 
         for sample_data in partition_data.values():
             for url in sample_data.get("files", {}):
@@ -262,6 +272,74 @@ def get_partition_endpoints(
                     endpoints.add(match.group(0))
 
     return endpoints
+
+
+def get_partition_error_endpoints(
+    error_files,
+    dataset: str,
+    partition_id: str,
+    verbose: bool = False,
+) -> tuple[set[str], set[str]]:
+    """
+    Extract ROOT URLs and endpoints from error logs for one exact partition.
+
+    A log is associated with the partition only if it contains a matching
+    WorkItem dataset identifier, such as dataset_80 for partition 80.
+    """
+    target_dataset = f"{dataset}_{partition_id}"
+    work_item_pattern = re.compile(
+        rf"""WorkItem\s*\(\s*dataset\s*=\s*['"]{re.escape(target_dataset)}['"]""",
+        flags=re.IGNORECASE,
+    )
+    endpoint_pattern = re.compile(ENDPOINT_PATTERN, flags=re.IGNORECASE)
+
+    root_urls = set()
+    endpoints = set()
+
+    for error_file in error_files:
+        error_file = Path(error_file)
+
+        try:
+            content = error_file.read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+        except OSError as exc:
+            if verbose:
+                print(
+                    f"[{dataset}:{partition_id}] " f"Could not read {error_file}: {exc}"
+                )
+            continue
+
+        if not work_item_pattern.search(content):
+            continue
+
+        urls = set(ROOT_URL_PATTERN.findall(content))
+        root_urls.update(urls)
+
+        for url in urls:
+            match = endpoint_pattern.match(url)
+            if match:
+                endpoints.add(match.group(0))
+
+    return root_urls, endpoints
+
+
+def map_endpoints_to_sites(endpoints: set[str]) -> set[str]:
+    """Map known XRootD endpoints to CMS site names."""
+    return {
+        xroot_to_site[endpoint] for endpoint in endpoints if endpoint in xroot_to_site
+    }
+
+
+def get_partition_sites(partitions_data: dict, partition_id: str) -> set[str]:
+    """Identify sites from the files belonging to one partition."""
+    endpoints = get_partition_endpoints(
+        partitions_data,
+        {str(partition_id)},
+        re.compile(ENDPOINT_PATTERN, flags=re.IGNORECASE),
+    )
+    return map_endpoints_to_sites(endpoints)
 
 
 def analyze_xrootd_error_logs(
@@ -274,30 +352,21 @@ def analyze_xrootd_error_logs(
     """
     Identify error types and XRootD endpoints for one dataset.
 
-    Endpoints are extracted from recent error logs first. If no endpoint
-    is found in the logs, the function falls back to the files belonging
-    to the currently missing partitions.
+    ROOT URLs are extracted from the logs first. Partition endpoints are used
+    only when no ROOT URL is present in any of the supplied logs.
     """
     dataset_dir = Path(job_dir) / dataset
     partitions_path = dataset_dir / "partitions.json"
 
-    if missing_partitions is None:
-        missing_partitions = get_missing_job_partitions(job_dir, dataset)
-
     missing_partitions = {str(partition) for partition in missing_partitions}
 
     if partitions_path.is_file():
-        partitions_data = json.loads(partitions_path.read_text())
+        partitions_data = json.loads(partitions_path.read_text(encoding="utf-8"))
     else:
         partitions_data = {}
-        if verbose:
-            print(f"[{dataset}] Missing partitions.json: {partitions_path}")
 
-    endpoint_pattern = re.compile(
-        ENDPOINT_PATTERN,
-        flags=re.IGNORECASE,
-    )
-
+    endpoint_pattern = re.compile(ENDPOINT_PATTERN, flags=re.IGNORECASE)
+    root_urls = set()
     endpoints = set()
     error_types = set()
 
@@ -305,26 +374,32 @@ def analyze_xrootd_error_logs(
         error_file = Path(error_file)
 
         try:
-            content = error_file.read_text(errors="replace")
-        except OSError as exc:
-            if verbose:
-                print(f"[{dataset}] Could not read {error_file}: {exc}")
+            content = error_file.read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+        except OSError:
             continue
 
-        endpoints.update(endpoint_pattern.findall(content))
+        urls = set(ROOT_URL_PATTERN.findall(content))
+        root_urls.update(urls)
         error_types.update(identify_error_types(content))
 
-    if not endpoints and missing_partitions:
+        for url in urls:
+            match = endpoint_pattern.match(url)
+            if match:
+                endpoints.add(match.group(0))
+
+    # Use partition endpoints only when no ROOT URLs appear in the logs.
+    if not root_urls and missing_partitions:
         endpoints = get_partition_endpoints(
             partitions_data,
             missing_partitions,
             endpoint_pattern,
         )
 
-        if verbose:
-            print(f"[{dataset}] Fallback endpoints: {sorted(endpoints)}")
-
     return {
+        "root_urls": root_urls,
         "endpoints": endpoints,
         "error_types": error_types,
         "partitions": missing_partitions,
@@ -341,14 +416,8 @@ def get_jobs_info(
     """
     Collect expected jobs, completed jobs, and recent error logs per dataset.
 
-    Returns
-    -------
-    jobnum : dict
-        Dataset -> list of expected job numbers.
-    jobnum_done : dict
-        Dataset -> list of job numbers with output files.
-    error_files : dict
-        Dataset -> list of recent .err file paths.
+    Returns expected job numbers, completed job numbers, and recent .err
+    paths grouped by dataset.
     """
     jobnum = {}
     jobnum_done = {}
@@ -369,7 +438,7 @@ def get_jobs_info(
                 f"Expected at: {jobnum_path}"
             )
 
-        jobnum[dataset] = jobnum_path.read_text().splitlines()
+        jobnum[dataset] = jobnum_path.read_text(encoding="utf-8").splitlines()
 
         output_files = list((output_dir / dataset).glob(f"*.{output_format}"))
         jobnum_done[dataset] = [
@@ -377,6 +446,7 @@ def get_jobs_info(
         ]
 
         dataset_log_dir = log_dir / dataset
+
         if dataset_log_dir.is_dir():
             recent_errors = [
                 path
@@ -390,17 +460,8 @@ def get_jobs_info(
     return jobnum, jobnum_done, error_files
 
 
-def print_job_status(jobnum, jobnum_done, verbose=False):
-    """
-    Print job completion totals and return missing jobs per dataset.
-
-    Returns
-    -------
-    jobnum_missing : dict
-        Dataset -> set of missing job numbers.
-    datasets_with_missing : list
-        Datasets with at least one missing job.
-    """
+def print_job_status(jobnum, jobnum_done):
+    """Print job completion totals and return missing jobs per dataset."""
     jobnum_missing = {
         dataset: set(expected) - set(jobnum_done.get(dataset, []))
         for dataset, expected in jobnum.items()
@@ -421,7 +482,7 @@ def print_job_status(jobnum, jobnum_done, verbose=False):
         dataset for dataset, missing in jobnum_missing.items() if missing
     ]
 
-    if n_missing and not verbose:
+    if n_missing:
         print("-" * 60)
         print(
             f"Datasets with missing jobs "
@@ -446,26 +507,22 @@ def update_executor_for_dataset(
     args_json = job_dir / dataset / "arguments.json"
 
     if not args_json.is_file():
-        print(f"[{dataset}] Missing arguments.json — cannot update executor")
+        print(f"[{dataset}] Missing arguments.json - cannot update executor")
         return
 
-    arguments = json.loads(args_json.read_text())
+    arguments = json.loads(args_json.read_text(encoding="utf-8"))
 
     if arguments.get("executor") == executor:
         print(f"[{dataset}] Executor is already '{executor}'")
         return
 
     arguments["executor"] = executor
-    args_json.write_text(json.dumps(arguments, indent=4) + "\n")
+    args_json.write_text(
+        json.dumps(arguments, indent=4) + "\n",
+        encoding="utf-8",
+    )
 
     print(f"[{dataset}] Updated executor to '{executor}'")
-
-
-def map_endpoints_to_sites(endpoints: set[str]) -> set[str]:
-    """Map known XRootD endpoints to CMS site names."""
-    return {
-        xroot_to_site[endpoint] for endpoint in endpoints if endpoint in xroot_to_site
-    }
 
 
 def analyze_xrootd_errors_by_dataset(
@@ -475,7 +532,7 @@ def analyze_xrootd_errors_by_dataset(
     missing_partitions,
     verbose=False,
 ):
-    """Summarize errors for a dataset without overriding unmapped log endpoints."""
+    """Diagnose a dataset without replacing present but unmapped ROOT endpoints."""
     errors = analyze_xrootd_error_logs(
         error_files=error_files,
         job_dir=job_dir,
@@ -483,32 +540,9 @@ def analyze_xrootd_errors_by_dataset(
         missing_partitions=missing_partitions,
         verbose=verbose,
     )
+
     errors["sites"] = map_endpoints_to_sites(errors["endpoints"])
-
-    for endpoint in sorted(errors["endpoints"]):
-        if endpoint not in xroot_to_site:
-            print(
-                f"[{dataset}] Could not map XRootD endpoint "
-                f"'{endpoint}' to a site name"
-            )
-
-    if not errors["sites"]:
-        print(
-            f"[{dataset}] No CMS site could be identified "
-            "from the error logs or missing partitions."
-        )
-
     return errors
-
-
-def group_datasets_by_sites(dataset_sites):
-    """Group datasets that share exactly the same set of failing sites."""
-    groups = defaultdict(list)
-
-    for dataset, sites in dataset_sites.items():
-        groups[frozenset(sites)].append(dataset)
-
-    return groups
 
 
 def regenerate_partitions(
@@ -521,21 +555,18 @@ def regenerate_partitions(
 
     if not args_json.is_file():
         print(
-            f"[{dataset}] Missing {args_json} — cannot repartition",
+            f"[{dataset}] Missing {args_json} - cannot repartition",
             flush=True,
         )
         return
 
-    fileset_files = current_fileset["files"]
-    root_files = list(fileset_files.items())
-    nfiles = json.loads(args_json.read_text())["nfiles"]
+    root_files = list(current_fileset["files"].items())
+    nfiles = json.loads(args_json.read_text(encoding="utf-8"))["nfiles"]
     fileset_chunks = divide_list(root_files, nfiles)
-
     partition_dataset = {}
 
     for index, chunk in enumerate(fileset_chunks, start=1):
         dataset_key = f"{dataset}_{index}" if len(fileset_chunks) > 1 else dataset
-
         partition_dataset[index] = {
             dataset_key: {
                 "files": dict(chunk),
@@ -544,73 +575,590 @@ def regenerate_partitions(
         }
 
     partition_file = job_dir / dataset / "partitions.json"
-    partition_file.write_text(json.dumps(partition_dataset, indent=4))
+    partition_file.write_text(
+        json.dumps(partition_dataset, indent=4) + "\n",
+        encoding="utf-8",
+    )
 
 
 def file_identity(url: str) -> str:
     """Return a replica-independent CMS logical file name."""
     path = urlsplit(url).path
     marker = "/store/"
+
     if marker not in path:
         raise ValueError(f"Cannot identify CMS LFN from URL: {url}")
+
     return path[path.index(marker) :]
 
 
-def get_partition_sites(partitions_data: dict, partition_id: str) -> set[str]:
-    """Identify sites used by one partition, not the entire dataset."""
-    endpoints = get_partition_endpoints(
-        partitions_data, {str(partition_id)}, re.compile(ENDPOINT_PATTERN, re.I)
-    )
-    return map_endpoints_to_sites(endpoints)
+class UnmappedXRootDError(RuntimeError):
+    """A ROOT file in an error log has no known CMS site mapping."""
 
 
-def get_failed_root_files(error_files, dataset: str, partition_id: str) -> set[str]:
-    """Extract ROOT URLs from log entries belonging to exactly one WorkItem partition."""
-    expected_work_item = f"{dataset}_{partition_id}"
-    work_item_pattern = re.compile(
-        r"WorkItem\(dataset=['\"](?P<dataset>[^'\"]+)['\"],\s*"
-        r"filename=['\"](?P<url>root://[^'\"]+?\.root)['\"]",
-        flags=re.IGNORECASE,
-    )
-    failed_urls = set()
-
-    for error_file in error_files:
-        try:
-            content = Path(error_file).read_text(errors="replace")
-        except OSError:
-            continue
-
-        for match in work_item_pattern.finditer(content):
-            if match.group("dataset") == expected_work_item:
-                failed_urls.add(match.group("url"))
-
-    return failed_urls
+def require_mapped_root_sites(root_urls: set[str], context: str) -> set[str]:
+    """Fail explicitly for every ROOT URL whose endpoint is not mapped."""
+    endpoint_pattern = re.compile(ENDPOINT_PATTERN, flags=re.IGNORECASE)
+    sites = set()
+    unknown = []
+    for url in sorted(root_urls):
+        match = endpoint_pattern.match(url)
+        endpoint = match.group(0) if match else None
+        if endpoint not in xroot_to_site:
+            unknown.append(
+                f"[{context}] Could not find the site associated with ROOT file {url} (endpoint: {endpoint or 'unknown'})."
+            )
+        else:
+            sites.add(xroot_to_site[endpoint])
+    if unknown:
+        raise UnmappedXRootDError("\n".join(unknown))
+    return sites
 
 
-def get_partition_failure_sites(
-    error_files,
+def get_problematic_sites_for_partition(
+    year: str,
     dataset: str,
     partition_id: str,
     partitions_data: dict,
-) -> tuple[set[str], set[str], bool]:
-    """Return sites for one partition, preferring ROOT URLs recorded in its .err logs.
+    error_files,
+    verbose: bool = False,
+) -> set[str]:
+    """Prefer partition-specific error URLs; fall back only if none exist."""
+    root_urls, _ = get_partition_error_endpoints(
+        error_files=error_files,
+        dataset=dataset,
+        partition_id=str(partition_id),
+        verbose=verbose,
+    )
+    if root_urls:
+        sites = require_mapped_root_sites(root_urls, f"{dataset}:{partition_id}")
+        if verbose:
+            print(f"[{dataset}:{partition_id}] Sites from error logs: {sorted(sites)}")
+        return sites
 
-    If a matching log contains a ROOT URL but its endpoint is unmapped, do not
-    fall back to the partition's existing URLs: that could blacklist an unrelated site.
-    """
-    failed_urls = get_failed_root_files(error_files, dataset, str(partition_id))
-
-    if failed_urls:
-        endpoints = {
-            match.group(0)
-            for url in failed_urls
-            if (match := re.match(ENDPOINT_PATTERN, url, flags=re.IGNORECASE))
-        }
-        sites = map_endpoints_to_sites(endpoints)
-        return failed_urls, sites, True
-
+    if verbose:
+        print(
+            f"[{dataset}:{partition_id}] No ROOT URLs in matching error logs; falling back to partition endpoints."
+        )
     sites = get_partition_sites(partitions_data, str(partition_id))
-    return set(), sites, False
+    if verbose:
+        print(f"[{dataset}:{partition_id}] Fallback sites: {sorted(sites)}")
+    return sites
+
+
+def endpoints_from_root_urls(root_urls):
+    """Return the exact endpoints present in ROOT URLs."""
+    pattern = re.compile(ENDPOINT_PATTERN, flags=re.IGNORECASE)
+    return {match.group(0) for url in root_urls if (match := pattern.match(url))}
+
+
+def partition_endpoints(partitions, partition_id):
+    """Return the endpoints of one partition in partitions.json."""
+    return get_partition_endpoints(
+        partitions,
+        {str(partition_id)},
+        re.compile(ENDPOINT_PATTERN, flags=re.IGNORECASE),
+    )
+
+
+def select_missing_job_error_files(error_files, dataset, missing_ids, verbose=False):
+    """Select recent .err logs that can be attributed to a missing job.
+
+    Accept an exact job ID in the filename (e.g. dataset_7.err, 7.err,
+    dataset_7.123.err), or a WorkItem identifier in the log body.
+    Logs containing WorkItems for both missing and completed jobs are
+    excluded unless their filename identifies a missing job unambiguously.
+    """
+    missing_ids = {str(x) for x in missing_ids}
+    selected = []
+    for path in error_files:
+        path = Path(path)
+        stem = path.stem
+        filename_ids = set()
+        for pid in missing_ids:
+            if re.search(rf"(?:^|[_\.-]){re.escape(pid)}(?:$|[_\.-])", stem):
+                filename_ids.add(pid)
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            if verbose:
+                print(f"[{dataset}] Could not read {path}: {exc}")
+            continue
+        workitems = set(
+            re.findall(
+                rf"WorkItem\s*\(\s*dataset\s*=\s*['\"]{re.escape(dataset)}_(\d+)['\"]",
+                content,
+                flags=re.IGNORECASE,
+            )
+        )
+        if filename_ids and (not workitems or workitems <= missing_ids):
+            selected.append(path)
+        elif workitems and workitems <= missing_ids:
+            selected.append(path)
+    return selected
+
+
+def plan_regeneration(
+    job_dir, dataset_partitions, dataset_error_files, by_dataset=False, verbose=False
+):
+    """Preflight mappings and choose era, dataset, or partition fallback.
+
+    Only logs attributable to missing jobs are supplied by the caller.
+    Default: union of ROOT URLs from all those logs, applied to every
+    eligible dataset with the same era-wide blacklist. Dataset mode:
+    each dataset gets its own log-derived blacklist, or partition fallback.
+    If no ROOT URLs exist in the era, use partition fallback everywhere.
+    """
+    data = {}
+    era_urls = set()
+    for dataset, missing_ids in sorted(dataset_partitions.items()):
+        path = job_dir / dataset / "partitions.json"
+        if not path.is_file():
+            print(f"[{dataset}] Missing partitions.json; skipping")
+            continue
+        partitions = json.loads(path.read_text(encoding="utf-8"))
+        urls = set()
+        for log in dataset_error_files.get(dataset, []):
+            try:
+                urls.update(
+                    ROOT_URL_PATTERN.findall(
+                        Path(log).read_text(encoding="utf-8", errors="replace")
+                    )
+                )
+            except OSError:
+                continue
+        data[dataset] = (partitions, set(missing_ids), urls)
+        era_urls.update(urls)
+
+    # Validate ALL observed ROOT URLs before any mutation, even in by_dataset mode.
+    era_sites = require_mapped_root_sites(era_urls, "era")
+    plans = {}
+    for dataset, (partitions, missing_ids, urls) in data.items():
+        if not by_dataset and era_urls:
+            plans[dataset] = {
+                "mode": "era",
+                "sites": set(era_sites),
+                "endpoints": endpoints_from_root_urls(era_urls),
+                "source": "ROOT URLs in missing-job error logs (era-wide)",
+                "partition_ids": missing_ids,
+            }
+        elif by_dataset and urls:
+            plans[dataset] = {
+                "mode": "dataset",
+                "sites": require_mapped_root_sites(urls, dataset),
+                "endpoints": endpoints_from_root_urls(urls),
+                "source": "ROOT URLs in missing-job error logs (dataset)",
+                "partition_ids": missing_ids,
+            }
+        else:
+            sites_by_partition = {}
+            endpoints_by_partition = {}
+            for pid in sort_job_numbers(missing_ids):
+                pid = str(pid)
+                endpoints = partition_endpoints(partitions, pid)
+                endpoints_by_partition[pid] = endpoints
+                sites_by_partition[pid] = map_endpoints_to_sites(endpoints)
+            plans[dataset] = {
+                "mode": "partition",
+                "sites_by_partition": sites_by_partition,
+                "endpoints_by_partition": endpoints_by_partition,
+                "sources_by_partition": {
+                    str(pid): "Partition endpoints (partitions.json)"
+                    for pid in missing_ids
+                },
+                "partition_ids": missing_ids,
+            }
+    return plans
+
+
+def print_regeneration_strategy(regeneration_plan, by_dataset, verbose=False):
+    """Explain the fileset update strategy; list datasets only for dataset verbose mode."""
+    log_datasets = sorted(
+        dataset
+        for dataset, plan in regeneration_plan.items()
+        if plan["mode"] in {"era", "dataset"}
+    )
+    partition_datasets = sorted(
+        dataset
+        for dataset, plan in regeneration_plan.items()
+        if plan["mode"] == "partition"
+    )
+    count = len(regeneration_plan)
+    noun = "dataset" if count == 1 else "datasets"
+
+    print("\n" + "-" * 60)
+    print("FILESET UPDATE STRATEGY")
+    print("-" * 60)
+
+    if not count:
+        print("No eligible datasets were found for fileset regeneration.")
+        return
+
+    if not by_dataset:
+        if log_datasets:
+            print(f"Regenerating {count} {noun} using a common site blacklist")
+            print("identified from ROOT URLs in the missing-job error logs")
+            print("across the era.")
+        else:
+            print(f"Regenerating {count} {noun} partition by partition because")
+            print("no ROOT URLs were found in the missing-job error logs")
+            print("across the era. Sites will be taken from partitions.json.")
+        return
+
+    print(f"Regenerating {count} {noun} independently, using a separate")
+    print("site blacklist for each dataset or partition.")
+
+    if log_datasets:
+        n = len(log_datasets)
+        label = "dataset" if n == 1 else "datasets"
+        print(f"\n{n} {label} will use sites identified from xrootd endpoints in")
+        print("their missing-job error logs.")
+        if verbose:
+            for dataset in log_datasets:
+                print(f"  - {dataset}")
+
+    if partition_datasets:
+        n = len(partition_datasets)
+        label = "dataset" if n == 1 else "datasets"
+        print(f"\n{n} {label} will use sites identified from partitions.json,")
+        print("with regeneration performed partition by partition.")
+        if verbose:
+            for dataset in partition_datasets:
+                print(f"  - {dataset}")
+
+
+def regenerate_non_era_partitions(
+    year: str,
+    fileset_dir: Path,
+    job_dir: Path,
+    dataset_partitions: dict[str, set[str]],
+    dataset_error_files: dict[str, list[Path]],
+    verbose: bool = False,
+    regeneration_plan=None,
+) -> None:
+    """
+    Refetch each missing partition with its own blacklist and preserve job IDs.
+
+    Before each fetch.py invocation, the current blacklist is cleared using
+    modify_site_list(), and only the sites identified for that partition are
+    blacklisted. The regenerated files are matched by LFN so unrelated
+    partitions and their job identifiers remain unchanged.
+    """
+    fileset_path = fileset_dir / f"fileset_{year}_NANO_lxplus.json"
+    original_fileset = fileset_path.read_bytes() if fileset_path.exists() else None
+    updated = 0
+    era_plans = [p for p in (regeneration_plan or {}).values() if p["mode"] == "era"]
+    if era_plans:
+        print(f"[{year}] Blacklisting: {', '.join(sorted(era_plans[0]['sites']))}")
+
+    try:
+        for dataset, partition_ids in sorted(dataset_partitions.items()):
+            plan = (
+                regeneration_plan.get(dataset)
+                if regeneration_plan is not None
+                else None
+            )
+            if plan is None and regeneration_plan is not None:
+                continue
+            if plan is not None:
+                partition_ids = plan["partition_ids"]
+            partition_path = job_dir / dataset / "partitions.json"
+
+            if not partition_path.is_file():
+                print(f"[{dataset}] Missing partitions.json; skipping")
+                continue
+
+            partitions = json.loads(partition_path.read_text(encoding="utf-8"))
+            error_files = dataset_error_files.get(dataset, [])
+
+            cached_fetched = None
+            dataset_mode = plan is not None and plan["mode"] in {"dataset", "era"}
+            dataset_updated = 0
+            if dataset_mode:
+                if plan["mode"] != "era":
+                    print(
+                        f"[{dataset}] Blacklisting: {', '.join(sorted(plan['sites']))}"
+                    )
+                reset_site_blacklist(year)
+                for site in sorted(plan["sites"]):
+                    modify_site_list(year, site, "black")
+            for partition_id in sort_job_numbers(partition_ids):
+                partition_id = str(partition_id)
+                entry = partitions.get(partition_id)
+
+                if not entry or len(entry) != 1:
+                    print(
+                        f"[{dataset}:{partition_id}] "
+                        "Invalid/missing partition; skipping"
+                    )
+                    continue
+
+                _, sample_data = next(iter(entry.items()))
+                old_files = sample_data.get("files", {})
+
+                if not old_files:
+                    print(f"[{dataset}:{partition_id}] No files; skipping")
+                    continue
+
+                try:
+                    old_by_lfn = {
+                        file_identity(url): tree for url, tree in old_files.items()
+                    }
+                except ValueError as exc:
+                    print(f"[{dataset}:{partition_id}] {exc}; skipping")
+                    continue
+
+                if plan is not None:
+                    sites = (
+                        plan["sites"]
+                        if plan["mode"] in {"dataset", "era"}
+                        else plan["sites_by_partition"].get(partition_id, set())
+                    )
+                else:
+                    sites = get_problematic_sites_for_partition(
+                        year=year,
+                        dataset=dataset,
+                        partition_id=partition_id,
+                        partitions_data=partitions,
+                        error_files=error_files,
+                        verbose=verbose,
+                    )
+
+                if not sites:
+                    print(
+                        f"[{dataset}:{partition_id}] "
+                        "No problematic CMS sites identified; skipping"
+                    )
+                    continue
+
+                if not dataset_mode:
+                    print(
+                        f"[{dataset}:{partition_id}] Blacklisting: "
+                        f"{', '.join(sorted(sites))}"
+                    )
+                    reset_site_blacklist(year)
+                    for site in sorted(sites):
+                        modify_site_list(year, site, "black")
+
+                if (
+                    cached_fetched is not None
+                    and plan is not None
+                    and plan["mode"] in {"dataset", "era"}
+                ):
+                    fetched = cached_fetched
+                else:
+                    if fileset_path.exists():
+                        fileset_path.unlink()
+
+                    command = [
+                        "python3",
+                        "fetch.py",
+                        "--year",
+                        year,
+                        "--samples",
+                        dataset,
+                        "--skip_site",
+                    ]
+                    if verbose:
+                        label = dataset if dataset_mode else f"{dataset}:{partition_id}"
+                        print(f"[{label}] Running: {' '.join(command)}")
+                    result = subprocess.run(command, check=False)
+                    if result.returncode != 0 or not fileset_path.is_file():
+                        print(
+                            f"[{dataset}:{partition_id}] fetch.py failed; partition unchanged"
+                        )
+                        if plan is not None and plan["mode"] in {"dataset", "era"}:
+                            break
+                        continue
+                    fetched = json.loads(fileset_path.read_text(encoding="utf-8"))
+                    if plan is not None and plan["mode"] in {"dataset", "era"}:
+                        cached_fetched = fetched
+
+                candidates = [
+                    value
+                    for value in fetched.values()
+                    if value.get("metadata", {}).get("short_name") == dataset
+                ]
+
+                if len(candidates) != 1:
+                    print(
+                        f"[{dataset}:{partition_id}] "
+                        "Sample not uniquely found; unchanged"
+                    )
+                    continue
+
+                try:
+                    new_by_lfn = {
+                        file_identity(url): url
+                        for url in candidates[0].get("files", {})
+                    }
+                except ValueError as exc:
+                    print(f"[{dataset}:{partition_id}] {exc}; unchanged")
+                    continue
+
+                missing_lfns = set(old_by_lfn) - set(new_by_lfn)
+
+                if missing_lfns:
+                    print(
+                        f"[{dataset}:{partition_id}] "
+                        f"{len(missing_lfns)} original files not found "
+                        "with this blacklist; partition unchanged"
+                    )
+                    continue
+
+                replacement_files = {
+                    new_by_lfn[lfn]: tree for lfn, tree in old_by_lfn.items()
+                }
+                sample_data["files"] = replacement_files
+
+                partition_path.write_text(
+                    json.dumps(partitions, indent=4) + "\n",
+                    encoding="utf-8",
+                )
+                updated += 1
+                if dataset_mode:
+                    dataset_updated += 1
+                elif verbose:
+                    print(
+                        f"[{dataset}:{partition_id}] "
+                        f"Updated {len(replacement_files)} files"
+                    )
+
+            if dataset_mode:
+                if dataset_updated == len(partition_ids):
+                    print(f"[{dataset}] Partitions updated")
+                else:
+                    print(
+                        f"[{dataset}] Partitions partially updated: "
+                        f"{dataset_updated}/{len(partition_ids)}"
+                    )
+
+    finally:
+        if original_fileset is not None:
+            fileset_path.write_bytes(original_fileset)
+        elif fileset_path.exists():
+            fileset_path.unlink()
+
+    print(f"Partition regeneration completed: {updated} partition(s) updated.")
+
+
+def regenerate_era_batch(year, fileset_dir, job_dir, era_plans, verbose=False):
+    """Fetch all affected samples once using the shared era blacklist.
+
+    Only missing partitions are rewritten; their job IDs and LFNs are preserved.
+    """
+    datasets = sorted(era_plans)
+    if not datasets:
+        return 0
+    sites = set(next(iter(era_plans.values()))["sites"])
+    if any(set(plan["sites"]) != sites for plan in era_plans.values()):
+        raise ValueError("Era-wide plans have inconsistent site blacklists")
+
+    fileset_path = fileset_dir / f"fileset_{year}_NANO_lxplus.json"
+    original_fileset = fileset_path.read_bytes() if fileset_path.exists() else None
+    updated = 0
+    try:
+        print(f"[{year}] Blacklisting: {', '.join(sorted(sites))}")
+        reset_site_blacklist(year)
+        for site in sorted(sites):
+            modify_site_list(year, site, "black")
+
+        if fileset_path.exists():
+            fileset_path.unlink()
+        command = [
+            "python3",
+            "fetch.py",
+            "--year",
+            year,
+            "--samples",
+            *datasets,
+            "--skip_site",
+        ]
+        print(f"[{year}] Running fetch.py once for {len(datasets)} datasets")
+        if verbose:
+            print("  Command: " + " ".join(command))
+        result = subprocess.run(command, check=False)
+        if result.returncode != 0 or not fileset_path.is_file():
+            print(f"[{year}] fetch.py failed; no partitions updated")
+            return 0
+        try:
+            fetched = json.loads(fileset_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"[{year}] Invalid fetched fileset: {exc}; no partitions updated")
+            return 0
+
+        for dataset in datasets:
+            partition_path = job_dir / dataset / "partitions.json"
+            if not partition_path.is_file():
+                print(f"[{dataset}] Missing partitions.json; skipping")
+                continue
+            partitions = json.loads(partition_path.read_text(encoding="utf-8"))
+            candidates = [
+                v
+                for v in fetched.values()
+                if v.get("metadata", {}).get("short_name") == dataset
+            ]
+            if len(candidates) != 1:
+                print(f"[{dataset}] Sample not uniquely found; partitions unchanged")
+                continue
+            try:
+                new_by_lfn = {
+                    file_identity(url): url for url in candidates[0].get("files", {})
+                }
+            except ValueError as exc:
+                print(f"[{dataset}] {exc}; partitions unchanged")
+                continue
+            dataset_updated = 0
+            missing_ids = era_plans[dataset]["partition_ids"]
+            for partition_id in sort_job_numbers(missing_ids):
+                partition_id = str(partition_id)
+                entry = partitions.get(partition_id)
+                if not entry or len(entry) != 1:
+                    print(
+                        f"[{dataset}:{partition_id}] Invalid/missing partition; skipping"
+                    )
+                    continue
+                sample_data = next(iter(entry.values()))
+                old_files = sample_data.get("files", {})
+                if not old_files:
+                    print(f"[{dataset}:{partition_id}] No files; skipping")
+                    continue
+                try:
+                    old_by_lfn = {
+                        file_identity(url): tree for url, tree in old_files.items()
+                    }
+                except ValueError as exc:
+                    print(f"[{dataset}:{partition_id}] {exc}; skipping")
+                    continue
+                missing_lfns = set(old_by_lfn) - set(new_by_lfn)
+                if missing_lfns:
+                    print(
+                        f"[{dataset}:{partition_id}] {len(missing_lfns)} original files "
+                        "not found with this blacklist; partition unchanged"
+                    )
+                    continue
+                sample_data["files"] = {
+                    new_by_lfn[lfn]: tree for lfn, tree in old_by_lfn.items()
+                }
+                dataset_updated += 1
+            if dataset_updated:
+                partition_path.write_text(
+                    json.dumps(partitions, indent=4) + "\n", encoding="utf-8"
+                )
+            updated += dataset_updated
+            if dataset_updated == len(missing_ids):
+                print(f"[{dataset}] Partitions updated")
+            else:
+                print(
+                    f"[{dataset}] Partitions partially updated: "
+                    f"{dataset_updated}/{len(missing_ids)}"
+                )
+        return updated
+    finally:
+        if original_fileset is not None:
+            fileset_path.write_bytes(original_fileset)
+        elif fileset_path.exists():
+            fileset_path.unlink()
 
 
 def regenerate_missing_partitions(
@@ -618,230 +1166,29 @@ def regenerate_missing_partitions(
     fileset_dir: Path,
     job_dir: Path,
     dataset_partitions: dict[str, set[str]],
-    error_files_by_dataset: dict[str, list[Path]],
+    dataset_error_files: dict[str, list[Path]],
     verbose: bool = False,
+    regeneration_plan=None,
 ) -> None:
-    """Regenerate each selected partition using its own site blacklist.
-
-    Each fetch.py call is restricted to the dataset containing the partition
-    being repaired. Existing partition IDs, trees, and file lists are preserved;
-    replacement URLs are matched by CMS LFN.
-    """
-    sites_path = fileset_dir / f"{year}_sites.yaml"
-    fileset_path = find_nano_fileset(fileset_dir, year)
-    original_fileset = fileset_path.read_bytes() if fileset_path is not None else None
-
-    tasks = []
-    for dataset, partition_ids in sorted(dataset_partitions.items()):
-        partition_path = job_dir / dataset / "partitions.json"
-        if not partition_path.is_file():
-            print(f"[{dataset}] Missing partitions.json; skipping")
-            continue
-
-        partitions = json.loads(partition_path.read_text())
-        err_files = error_files_by_dataset.get(dataset, [])
-        for partition_id in sort_job_numbers(partition_ids):
-            partition_id = str(partition_id)
-            entry = partitions.get(partition_id)
-            if not entry or len(entry) != 1:
-                print(f"[{dataset}:{partition_id}] Invalid/missing partition; skipping")
-                continue
-
-            _, sample_data = next(iter(entry.items()))
-            old_files = sample_data.get("files", {})
-            if not old_files:
-                print(f"[{dataset}:{partition_id}] No files in partition; skipping")
-                continue
-
-            failed_urls, sites, urls_found_in_logs = get_partition_failure_sites(
-                err_files, dataset, partition_id, partitions
-            )
-            if not sites:
-                if urls_found_in_logs:
-                    print(
-                        f"[{dataset}:{partition_id}] Failed ROOT URL found in .err, "
-                        "but its endpoint could not be mapped; skipping blacklist"
-                    )
-                else:
-                    print(f"[{dataset}:{partition_id}] No mapped sites; skipping")
-                continue
-
-            try:
-                old_by_lfn = {
-                    file_identity(url): tree for url, tree in old_files.items()
-                }
-            except ValueError as exc:
-                print(f"[{dataset}:{partition_id}] {exc}; skipping")
-                continue
-
-            tasks.append(
-                {
-                    "dataset": dataset,
-                    "partition_id": partition_id,
-                    "partition_path": partition_path,
-                    "sites": frozenset(sites),
-                    "old_by_lfn": old_by_lfn,
-                }
-            )
-
-    updated = 0
-    try:
-        for task in tasks:
-            sites = task["sites"]
-            datasets = [task["dataset"]]
-            labels = f"{task['dataset']}:{task['partition_id']}"
-            print(f"[{labels}] Blacklisting: {', '.join(sorted(sites))}")
-
-            all_sites = set(xroot_to_site.values())
-            if not all_sites:
-                raise RuntimeError("No CMS sites found in xrootd_sites.py")
-            if not sites.issubset(all_sites):
-                raise RuntimeError(
-                    f"[{labels}] Unknown CMS sites: {sorted(sites - all_sites)}"
-                )
-
-            sites_config = {
-                "white": sorted(all_sites - sites),
-                "black": sorted(sites),
-            }
-            sites_path.write_text(yaml.safe_dump(sites_config, sort_keys=False))
-            if verbose:
-                print(f"[{labels}] Sites YAML: {sites_path.resolve()}")
-                print(f"[{labels}] Whitelisted sites: {len(sites_config['white'])}")
-                print(f"[{labels}] Blacklisted sites: {sites_config['black']}")
-
-            # Remove stale output first; never consume a fileset from a failed fetch.
-            if fileset_path is not None and fileset_path.exists():
-                fileset_path.unlink()
-
-            command = [
-                "python3",
-                "fetch.py",
-                "--year",
-                year,
-                "--samples",
-                " ".join(datasets),
-                "--skip_site",
-            ]
-            result = subprocess.run(command, check=False)
-            if result.returncode != 0:
-                print(f"[{labels}] fetch.py failed; partitions unchanged")
-                continue
-
-            if fileset_path is None or not fileset_path.is_file():
-                fileset_path = find_nano_fileset(fileset_dir, year)
-            if fileset_path is None or not fileset_path.is_file():
-                print(
-                    f"[{labels}] fetch.py did not produce a NanoAOD-versioned fileset"
-                )
-                continue
-
-            try:
-                fetched = json.loads(fileset_path.read_text())
-            except (OSError, json.JSONDecodeError) as exc:
-                print(f"[{labels}] Could not read generated fileset: {exc}")
-                continue
-
-            filesets_by_short_name = defaultdict(list)
-            for sample in fetched.values():
-                short_name = sample.get("metadata", {}).get("short_name")
-                if short_name:
-                    filesets_by_short_name[short_name].append(sample)
-
-            dataset = task["dataset"]
-            partition_id = task["partition_id"]
-            candidates = filesets_by_short_name.get(dataset, [])
-            if len(candidates) != 1:
-                print(
-                    f"[{dataset}:{partition_id}] Sample not uniquely found "
-                    "in generated fileset; unchanged"
-                )
-                continue
-
-            try:
-                new_by_lfn = {
-                    file_identity(url): url for url in candidates[0].get("files", {})
-                }
-            except ValueError as exc:
-                print(f"[{dataset}:{partition_id}] {exc}; unchanged")
-                continue
-
-            old_by_lfn = task["old_by_lfn"]
-            missing_lfns = set(old_by_lfn) - set(new_by_lfn)
-            if missing_lfns:
-                print(
-                    f"[{dataset}:{partition_id}] {len(missing_lfns)} original files "
-                    "not found with this blacklist; partition unchanged"
-                )
-                continue
-
-            partition_path = task["partition_path"]
-            partitions = json.loads(partition_path.read_text())
-            entry = partitions.get(partition_id)
-            if not entry or len(entry) != 1:
-                print(
-                    f"[{dataset}:{partition_id}] Partition changed during fetch; unchanged"
-                )
-                continue
-
-            _, sample_data = next(iter(entry.items()))
-            sample_data["files"] = {
-                new_by_lfn[lfn]: tree for lfn, tree in old_by_lfn.items()
-            }
-            partition_path.write_text(json.dumps(partitions, indent=4) + "\n")
-            updated += 1
-            if verbose:
-                print(
-                    f"[{dataset}:{partition_id}] Updated "
-                    f"{len(old_by_lfn)} file URL(s)"
-                )
-    finally:
-        # Keep the latest per-partition sites.yaml configuration for inspection.
-        # Restore the full original fileset because fetch.py generates a subset
-        # containing only the sample processed in the current task.
-        if original_fileset is not None and fileset_path is not None:
-            fileset_path.write_bytes(original_fileset)
-        elif fileset_path is not None and fileset_path.exists():
-            fileset_path.unlink()
-
-    print(f"Partition regeneration completed: {updated} partition(s) updated.")
-
-
-def update_missing_partitions_to_global(
-    job_dir: Path, dataset_partitions: dict[str, set[str]]
-) -> None:
-    """Replace URLs with the CMS global redirector in missing partitions only."""
-    global_redirector = "root://cms-xrd-global.cern.ch//store/"
-
-    for dataset, partition_ids in sorted(dataset_partitions.items()):
-        partition_file = job_dir / dataset / "partitions.json"
-        if not partition_file.is_file():
-            print(f"[{dataset}] Missing partitions.json — skipping")
-            continue
-
-        partitions = json.loads(partition_file.read_text())
-        changed = False
-        for partition_id in sort_job_numbers(partition_ids):
-            entry = partitions.get(str(partition_id))
-            if not entry:
-                print(f"[{dataset}:{partition_id}] Missing partition — skipping")
-                continue
-            for sample in entry.values():
-                files = sample.get("files", {})
-                sample["files"] = {
-                    (
-                        global_redirector + url.split("/store/", 1)[1]
-                        if "/store/" in url
-                        else url
-                    ): tree
-                    for url, tree in files.items()
-                }
-                changed = True
-        if changed:
-            partition_file.write_text(json.dumps(partitions, indent=4) + "\n")
-            print(
-                f"[{dataset}] Updated only missing partitions to CMS global redirector"
-            )
+    """Batch era-wide fetches; preserve per-dataset/partition fallback behavior."""
+    plans = regeneration_plan or {}
+    era_plans = {name: plan for name, plan in plans.items() if plan["mode"] == "era"}
+    other_plans = {name: plan for name, plan in plans.items() if plan["mode"] != "era"}
+    total = 0
+    if era_plans:
+        total += regenerate_era_batch(year, fileset_dir, job_dir, era_plans, verbose)
+    if other_plans:
+        regenerate_non_era_partitions(
+            year,
+            fileset_dir,
+            job_dir,
+            {name: dataset_partitions[name] for name in other_plans},
+            {name: dataset_error_files.get(name, []) for name in other_plans},
+            verbose=verbose,
+            regeneration_plan=other_plans,
+        )
+    elif era_plans:
+        print(f"Partition regeneration completed: {total} partition(s) updated.")
 
 
 def sort_job_numbers(job_numbers):
@@ -878,7 +1225,10 @@ def resubmit_jobs(
         dataset_dir = job_dir / dataset
 
         missing_file = dataset_dir / "missing.txt"
-        missing_file.write_text("".join(f"{job}\n" for job in missing_jobs))
+        missing_file.write_text(
+            "".join(f"{job}\n" for job in missing_jobs),
+            encoding="utf-8",
+        )
 
         condor_file = dataset_dir / f"{workflow}_{dataset}.sub"
         condor_backup = condor_file.with_name(f"{condor_file.stem}_all.sub")
@@ -889,12 +1239,11 @@ def resubmit_jobs(
                 check=True,
             )
 
-        submit_text = condor_file.read_text().replace(
+        submit_text = condor_file.read_text(encoding="utf-8").replace(
             "jobnum.txt",
             "missing.txt",
         )
-        condor_file.write_text(submit_text)
-
+        condor_file.write_text(submit_text, encoding="utf-8")
         submit_files.append(condor_file)
 
     for submit_file in submit_files:
@@ -916,10 +1265,8 @@ def reset_workflow(args, job_dir, log_dir, sites_file, fileset_file):
     subprocess.run(["rm", "-rf", str(job_dir)], check=False)
     subprocess.run(["rm", "-rf", str(log_dir)], check=False)
     subprocess.run(["rm", "-rf", str(sites_file)], check=False)
-    if fileset_file is not None:
-        subprocess.run(["rm", "-f", str(fileset_file)], check=False)
+    subprocess.run(["rm", "-rf", str(fileset_file)], check=False)
 
-    # Forward only arguments defined by this script.
     reset_cmd = [
         "python3",
         "runner.py",
@@ -929,8 +1276,6 @@ def reset_workflow(args, job_dir, log_dir, sites_file, fileset_file):
         args.year,
         "--output_format",
         args.output_format,
-        "-m",
-        args.memory,
         "--executor",
         args.executor,
     ]
@@ -948,27 +1293,40 @@ def main():
     args = parse_args()
 
     base_dir = Path.cwd()
-    output_dir = Path(make_output_directory(args))
+    output_dir = make_output_directory(args)
+
     condor_dir = base_dir / "condor"
     workflow_dir = f"{args.workflow}/{args.label}" if args.label else args.workflow
     job_dir = condor_dir / workflow_dir / args.year
-    log_dir = condor_dir / "logs" / workflow_dir / args.year
+    log_dir = condor_dir / "logs" / args.workflow / args.year
     fileset_dir = base_dir / "analysis" / "filesets"
 
     if not job_dir.is_dir() and not args.reset:
         raise FileNotFoundError(f"Condor job directory does not exist: {job_dir}")
 
     sites_file = fileset_dir / f"{args.year}_sites.yaml"
-    fileset_file = find_nano_fileset(fileset_dir, args.year)
+    fileset_file = fileset_dir / f"fileset_{args.year}_NANO_lxplus.json"
 
     if args.reset:
-        reset_workflow(args, job_dir, log_dir, sites_file, fileset_file)
+        reset_workflow(
+            args,
+            job_dir,
+            log_dir,
+            sites_file,
+            fileset_file,
+        )
 
     jobnum, jobnum_done, error_files = get_jobs_info(
-        job_dir, output_dir, log_dir, args.output_format, args.hours_ago
+        job_dir,
+        output_dir,
+        log_dir,
+        args.output_format,
+        args.hours_ago,
     )
+
     jobnum_missing, datasets_with_missing_jobs = print_job_status(
-        jobnum, jobnum_done, verbose=args.verbose
+        jobnum,
+        jobnum_done,
     )
 
     if not datasets_with_missing_jobs:
@@ -976,134 +1334,191 @@ def main():
         return
 
     missing_datasets = sorted(datasets_with_missing_jobs)
+
     if args.reset:
-        print("Workflow reset completed. Skipping XRootD diagnostics and blacklisting.")
+        print(
+            "Workflow reset completed. " "Skipping XRootD diagnostics and blacklisting."
+        )
+
         if timed_input("Resubmit missing jobs now?") in {"y", "yes"}:
             resubmit_jobs(
-                job_dir, jobnum_missing, missing_datasets, args.workflow, args.year
+                job_dir,
+                jobnum_missing,
+                missing_datasets,
+                args.workflow,
+                args.year,
             )
         return
 
-    # Restrict partition IDs to jobs that are still missing according to outputs.
-    dataset_partitions = {}
+    # Filter logs BEFORE both diagnostics and planning. A recent log from a
+    # completed job must never contribute sites to the blacklist.
+    eligible_missing = {
+        dataset: get_missing_job_partitions(jobnum_missing, dataset)
+        for dataset in missing_datasets
+    }
+    missing_error_files = {
+        dataset: select_missing_job_error_files(
+            error_files.get(dataset, []),
+            dataset,
+            jobnum_missing[dataset],
+            verbose=args.verbose,
+        )
+        for dataset in missing_datasets
+    }
+
+    errors_by_dataset = {}
+
     for dataset in missing_datasets:
-        recorded = get_missing_job_partitions(job_dir, dataset)
-        missing = {str(value) for value in jobnum_missing[dataset]}
-        selected = recorded & missing
-        if selected:
-            dataset_partitions[dataset] = selected
-        elif args.verbose:
-            print(f"[{dataset}] No matching missing partition IDs in missing.txt")
+        err_files = missing_error_files.get(dataset, [])
+        missing_partitions = get_missing_job_partitions(jobnum_missing, dataset)
 
-    if getattr(args, "use_global"):
-        if dataset_partitions:
-            print("Global redirector mode: updating only missing partitions.")
-            update_missing_partitions_to_global(job_dir, dataset_partitions)
-        else:
-            print(
-                "No missing partitions could be identified for global redirector update."
-            )
-    else:
-        errors_by_dataset = {}
-        for dataset in missing_datasets:
-            err_files = error_files.get(dataset, [])
-            missing_partitions = dataset_partitions.get(dataset, set())
-            errors_by_dataset[dataset] = analyze_xrootd_errors_by_dataset(
-                error_files=err_files,
-                job_dir=job_dir,
-                dataset=dataset,
-                missing_partitions=missing_partitions,
-                verbose=args.verbose,
-            )
+        if not err_files:
+            errors_by_dataset[dataset] = {
+                "root_urls": set(),
+                "endpoints": set(),
+                "error_types": set(),
+                "partitions": missing_partitions,
+                "sites": set(),
+            }
+            continue
 
-        if args.verbose:
-            print("-" * 60)
-            print(
-                f"Datasets with missing jobs ({len(missing_datasets)}/{len(jobnum)}):"
-            )
-            print("-" * 60)
-            for dataset in missing_datasets:
-                partitions = sort_job_numbers(dataset_partitions.get(dataset, set()))
-                sites = set()
-                partition_file = job_dir / dataset / "partitions.json"
-                if partition_file.is_file():
-                    partitions_data = json.loads(partition_file.read_text())
-                    for partition_id in partitions:
-                        _, partition_sites, urls_found = get_partition_failure_sites(
-                            error_files.get(dataset, []),
-                            dataset,
-                            partition_id,
-                            partitions_data,
-                        )
-                        if partition_sites:
-                            sites.update(partition_sites)
-                        elif urls_found:
-                            print(
-                                f"[{dataset}:{partition_id}] A failed ROOT URL was found, "
-                                "but no endpoint could be mapped."
-                            )
-                print(
-                    f"- [{dataset}] (Partitions: {', '.join(partitions) or 'not identified'}) "
-                    f"(Sites: {', '.join(sorted(sites)) or 'not identified'})"
-                )
+        errors_by_dataset[dataset] = analyze_xrootd_errors_by_dataset(
+            error_files=err_files,
+            job_dir=job_dir,
+            dataset=dataset,
+            missing_partitions=missing_partitions,
+            verbose=args.verbose,
+        )
 
-        if args.verbose:
-            print("\nDETAILED XROOTD ERROR ANALYSIS")
-            print("-" * 60)
-            for dataset in missing_datasets:
-                errors = errors_by_dataset[dataset]
-                print(f"\nDataset: {dataset}")
-                print(
-                    "  Error types: "
-                    + (
-                        ", ".join(sorted(errors.get("error_types", set())))
-                        or "unrecognized or no logs"
-                    )
-                )
-                print(
-                    "  Endpoints: "
-                    + (
-                        ", ".join(sorted(errors.get("endpoints", set())))
-                        or "none identified"
-                    )
-                )
-                print(
-                    "  Missing partitions: "
-                    + (
-                        ", ".join(
-                            sort_job_numbers(dataset_partitions.get(dataset, set()))
-                        )
-                        or "not identified"
-                    )
-                )
+    # Every missing partition is eligible. If no relevant ROOT URL is found,
+    # the plan falls back to partitions.json (even if no .err is available).
+    dataset_partitions = {
+        dataset: eligible_missing[dataset] for dataset in missing_datasets
+    }
+    dataset_partitions = {
+        dataset: partitions
+        for dataset, partitions in dataset_partitions.items()
+        if partitions
+    }
 
-        if args.executor == "iterative":
-            for dataset in missing_datasets:
-                update_executor_for_dataset(job_dir, dataset, executor="iterative")
-
-        eligible_partitions = {
-            dataset: partitions
-            for dataset, partitions in dataset_partitions.items()
-            if partitions
-        }
-        if not eligible_partitions:
-            print("\nNo eligible missing partitions for fileset regeneration.")
-        elif timed_input("\nRegenerate input files for missing partitions?") in {
-            "y",
-            "yes",
-        }:
-            regenerate_missing_partitions(
-                args.year,
-                fileset_dir,
+    regeneration_plan = {}
+    if dataset_partitions:
+        try:
+            regeneration_plan = plan_regeneration(
                 job_dir,
-                eligible_partitions,
-                error_files,
+                dataset_partitions,
+                {
+                    dataset: missing_error_files.get(dataset, [])
+                    for dataset in dataset_partitions
+                },
+                by_dataset=args.by_dataset,
                 verbose=args.verbose,
             )
+        except UnmappedXRootDError as exc:
+            print(f"\nERROR: {exc}", file=sys.stderr)
+            print(
+                "Add the missing endpoint-to-site mapping in xroot_to_site and rerun the script. No regeneration or resubmission was performed.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
+    if args.verbose:
+        print("\n" + "=" * 60)
+        print("DETAILED XROOTD ERROR ANALYSIS")
+        print("=" * 60)
+        for dataset in missing_datasets:
+            errors = errors_by_dataset[dataset]
+            plan = regeneration_plan.get(dataset)
+            print(f"\nDataset: {dataset}")
+            print(
+                "  Error types: "
+                + (
+                    ", ".join(sorted(errors.get("error_types", set())))
+                    or "unrecognized or no logs"
+                )
+            )
+            if plan is not None and plan["mode"] in {"dataset", "era"}:
+                displayed_endpoints = plan["endpoints"]
+                displayed_sites = plan["sites"]
+                source = plan["source"]
+            elif plan is not None:
+                displayed_endpoints = (
+                    set().union(*plan["endpoints_by_partition"].values())
+                    if plan["endpoints_by_partition"]
+                    else set()
+                )
+                displayed_sites = (
+                    set().union(*plan["sites_by_partition"].values())
+                    if plan["sites_by_partition"]
+                    else set()
+                )
+                sources = set(plan["sources_by_partition"].values())
+                source = (
+                    next(iter(sources))
+                    if len(sources) == 1
+                    else "Mixed (error logs and partitions.json)"
+                )
+            else:
+                displayed_endpoints = errors.get("endpoints", set())
+                displayed_sites = errors.get("sites", set())
+                source = (
+                    "ROOT URLs in error logs"
+                    if errors.get("root_urls")
+                    else (
+                        "Partition endpoints (partitions.json)"
+                        if displayed_endpoints
+                        else "No endpoints identified"
+                    )
+                )
+            print("  Source: " + source)
+            print(
+                "  Endpoints: "
+                + (", ".join(sorted(displayed_endpoints)) or "none identified")
+            )
+            print(
+                "  Sites: " + (", ".join(sorted(displayed_sites)) or "none identified")
+            )
+            print(
+                "  Missing jobs: "
+                + (", ".join(sort_job_numbers(jobnum_missing[dataset])) or "none")
+            )
+
+    print_regeneration_strategy(regeneration_plan, args.by_dataset, args.verbose)
+
+    if args.update_executor:
+        for dataset in missing_datasets:
+            update_executor_for_dataset(
+                job_dir,
+                dataset,
+                executor=args.executor,
+            )
+
+    if not dataset_partitions:
+        print("\nNo eligible partitions for fileset regeneration.")
+    elif timed_input("\nRegenerate input files for missing partitions?") in {
+        "y",
+        "yes",
+    }:
+        regenerate_missing_partitions(
+            year=args.year,
+            fileset_dir=fileset_dir,
+            job_dir=job_dir,
+            dataset_partitions=dataset_partitions,
+            dataset_error_files={
+                dataset: missing_error_files.get(dataset, [])
+                for dataset in dataset_partitions
+            },
+            verbose=args.verbose,
+            regeneration_plan=regeneration_plan,
+        )
 
     if timed_input("Resubmit missing jobs now?") in {"y", "yes"}:
         resubmit_jobs(
-            job_dir, jobnum_missing, missing_datasets, args.workflow, args.year
+            job_dir,
+            jobnum_missing,
+            missing_datasets,
+            args.workflow,
+            args.year,
         )
 
 
