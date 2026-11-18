@@ -1,6 +1,7 @@
 import awkward as ak
 from coffea.nanoevents.methods import candidate
 
+
 def delta_r_mask(first, second, threshold=0.4):
     """select objects from 'first' which are at least 'threshold' away from all objects in 'second'."""
     mval = first.metric_table(second)
@@ -27,6 +28,7 @@ def select_dileptons(objects, key):
     dileptons["pt"] = dileptons.p4.pt
     return dileptons
 
+
 def select_dileptons_qcd(objects, key):
     leptons = ak.zip(
         {
@@ -40,7 +42,7 @@ def select_dileptons_qcd(objects, key):
             "is_not_tight": objects[key].is_not_tight,
             "is_loose_not_tight": objects[key].is_loose_not_tight,
             "is_matched": objects[key].is_matched,
-            "is_barrel": objects[key].is_barrel
+            "is_barrel": objects[key].is_barrel,
         },
         with_name="PtEtaPhiMCandidate",
         behavior=candidate.behavior,
@@ -55,3 +57,12 @@ def select_dileptons_qcd(objects, key):
     dileptons["pt"] = dileptons.p4.pt
 
     return dileptons
+
+
+def get_genparticles(
+    genparticles, lowid=24, highid=24, flags=["fromHardProcess", "isLastCopy"]
+):
+    absid = abs(genparticles.pdgId)
+    return genparticles[
+        ((absid >= lowid) & (absid <= highid)) & genparticles.hasFlags(flags)
+    ]

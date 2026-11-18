@@ -2,7 +2,12 @@ import vector
 import numpy as np
 import awkward as ak
 from analysis.working_points import working_points
-from analysis.selections import delta_r_mask, select_dileptons, select_dileptons_qcd
+from analysis.selections import (
+    delta_r_mask,
+    select_dileptons,
+    select_dileptons_qcd,
+    get_genparticles,
+)
 
 
 class ObjectSelector:
@@ -102,6 +107,9 @@ class ObjectSelector:
             np.abs(max_mass_dijet.j1.eta - max_mass_dijet.j2.eta)
         )
 
+    # --------------------------------------------------------------------------------
+    # SUSY VBF
+    # --------------------------------------------------------------------------------
     def select_ztojets_met(self, obj_name):
         # add muons pT to MET to simulate a 0-lepton final state
         all_muons = self.objects["muons"].sum(axis=1)
@@ -127,8 +135,28 @@ class ObjectSelector:
         )
         self.objects[obj_name] = met2D + muons2D
 
+    def select_gen_zmass(self, obj_name):
+        mus = get_genparticles(
+            self.events.GenPart, 13, 13, flags=["fromHardProcess", "isLastCopy"]
+        )
+        vector.register_awkward()
+        mu_p4 = ak.zip(
+            {
+                "pt": mus.pt,
+                "eta": mus.eta,
+                "phi": mus.phi,
+                "mass": 0.10566 * ak.ones_like(mus.pt),
+            },
+            with_name="PtEtaPhiMLorentzVector",
+        )
+        zmass = mu_p4.sum(axis=1).mass
+        has2 = ak.num(mus) == 2
+        zmass = ak.mask(zmass, has2)
+
+        self.objects[obj_name] = zmass
+
     # --------------------------------------------------------------------------------
-    # QCD leptos
+    # QCD leptons
     # --------------------------------------------------------------------------------
     def select_qcd_tf_electrons(self, obj_name):
         from analysis.workflows.config import WorkflowConfigBuilder

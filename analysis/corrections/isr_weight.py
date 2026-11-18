@@ -1,18 +1,10 @@
 import re
 import copy
+import numpy as np
 import correctionlib
 import awkward as ak
 from pathlib import Path
-import numpy as np
-
-
-def getParticles(
-    genparticles, lowid=24, highid=24, flags=["fromHardProcess", "isLastCopy"]
-):
-    absid = abs(genparticles.pdgId)
-    return genparticles[
-        ((absid >= lowid) & (absid <= highid)) & genparticles.hasFlags(flags)
-    ]
+from analysis.selections import get_genparticles
 
 
 def add_isr_weight(events, weights, year, variation, dataset, fit, one_dim, workflow):
@@ -39,7 +31,7 @@ def add_isr_weight(events, weights, year, variation, dataset, fit, one_dim, work
             pt = ak.firsts(events.selected_dimuons.pt)
         else:
             # For W+jets, select gen-level W(-> mu nu) pT
-            ws = getParticles(events.GenPart, 24)
+            ws = get_genparticles(events.GenPart, 24)
             is_from_munu = ak.sum(ak.firsts(np.abs(ws.children.pdgId)), axis=1) == 27
             ws = ws.mask[is_from_munu]
             pt = ak.firsts(ws.pt)
