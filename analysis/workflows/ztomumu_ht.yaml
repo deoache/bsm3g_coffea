@@ -39,7 +39,7 @@ histogram_config:
        - 2500
        - 3500
       label: gen $\text{H}_{\text{T}}$ [GeV]
-      expression: np.zeros_like(events.PV.npvsGood) if not hasattr(events, "LHE") else events.LHE.HT
+      expression: events.LHE.HT
     dimuon_gen_mass:
       type: Variable
       edges:
