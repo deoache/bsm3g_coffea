@@ -10,16 +10,14 @@ event_selection:
     muon:
       - SingleMu
   selections:
-    dummy_sel: ak.ones_like(events.PV.npvsGood, dtype=bool)
+    noisefilters: get_metfilters_mask(events, year)
   categories:
     base:
-      - dummy_sel
+      - noisefilters
 corrections:
   objects:
     - jets
-    - muons
-    - electrons
-    - taus
+    - jets_veto
     - met
   apply_obj_syst: false
   event_weights:
