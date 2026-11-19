@@ -13,146 +13,181 @@ def apply_met_phi_corrections(
     corrections_config: dict,
 ):
     """
-    Apply MET phi modulation corrections
+    Apply MET XY corrections to the nominal MET and all existing object shifts.
 
-    Docs: (from https://twiki.cern.ch/twiki/bin/viewauth/CMS/MissingETRun2Corrections#xy_Shift_Correction_MET_phi_modu)
-        The xy-Shift correction reduces the MET phi modulation. The distribution of true MET is independent of phi because of the rotational symmetry of the collisions around the beam axis. However, we observe that the reconstructed MET does depend on phi. The MET phi distribution has roughly a sinusoidal curve with the period of 2pi. The possible causes of the modulation include anisotropic detector responses, inactive calorimeter cells or tracking regions, the detector misalignment, the displacement of the beam spot. The amplitude of the modulation increases roughly linearly with the number of the pile-up interactions. We can reduce the amplitude of the phi modulation by shifting the origin of the coordinate in the transverse momentum plane as a function of different particle species and in bins of eta.
+    The nominal XY correction is evaluated independently for each MET shift,
+    using the corresponding MET pt and phi.
+
+    The statistical XY variations are evaluated only for the nominal MET and
+    are added as independent systematic shifts.
     """
-    # load correction set
+    # Load correction set
     cset = correctionlib.CorrectionSet.from_file(correction_files["met"][year])
 
-    # take MET from nominal shift (corrected after JEC)
-    met = shifts[0][0]["MET"]
+    data_kind = "MC" if hasattr(events, "genWeight") else "DATA"
+    npvs = events.PV.npvsGood.to_numpy()
 
-    # make sure to not cross the maximum allowed value for uncorrected met
-    met_pt_raw = ak.ones_like(met.pt) * met.pt
-    met_pt = met_pt_raw
-    met_pt = np.clip(met_pt, 0.0, 6499.0)
+    # Keep the nominal MET before applying XY corrections.
+    # These inputs are needed to evaluate the statistical XY variations.
+    met_nominal_raw = shifts[0][0]["MET"]
+    met_nominal_pt_raw = met_nominal_raw.pt
+    met_nominal_phi_raw = met_nominal_raw.phi
 
-    met_phi_raw = ak.ones_like(met.phi) * met.phi
-    met_phi = met_phi_raw
-    met_phi = np.clip(met_phi, -3.15, 3.15)
-
-    # use correct run ranges when working with data, otherwise use uniform run numbers in an arbitrary large window
     run_ranges = {
         "2016preVFP": [272007, 278771],
         "2016postVFP": [278769, 284045],
         "2017": [297020, 306463],
         "2018": [315252, 325274],
-        # "2024": [378971, 387121],
     }
-    data_kind = "MC" if hasattr(events, "genWeight") else "DATA"
 
+    # Apply the XY correction independently to every existing shift.
     if year in run_ranges:
+        # Use the same run number for all shifts in a given event.
+        # This is important for MC, where the run number is randomly assigned.
         if data_kind == "MC":
             run = np.random.randint(
-                run_ranges[year][0], run_ranges[year][1], size=len(met_pt)
+                run_ranges[year][0],
+                run_ranges[year][1],
+                size=len(events),
             )
         else:
             run = events.run
 
-        run_key = "run3" if year.startswith("202") else "run2"
-        pt_corr_file = (
-            f"pt_metphicorr_pfmet_{data_kind.lower()}"
-            if run_key == "run2"
-            else f"pt_metphicorr_puppimet_{data_kind.lower()}"
-        )
-        corrected_met_pt = cset[pt_corr_file].evaluate(
-            met_pt.to_numpy(),
-            met_phi.to_numpy(),
-            events.PV.npvsGood.to_numpy(),
-            run,
-        )
-        phi_corr_file = (
-            f"phi_metphicorr_pfmet_{data_kind.lower()}"
-            if run_key == "run2"
-            else f"phi_metphicorr_puppimet_{data_kind.lower()}"
-        )
-        corrected_met_phi = cset[phi_corr_file].evaluate(
-            met_pt.to_numpy(),
-            met_phi.to_numpy(),
-            events.PV.npvsGood.to_numpy(),
-            run,
-        )
-        # assign nominal values to MET
-        met["pt"] = corrected_met_pt
-        met["phi"] = corrected_met_phi
-        shifts[0][0]["MET"] = met
+        pt_corr_file = f"pt_metphicorr_pfmet_{data_kind.lower()}"
+        phi_corr_file = f"phi_metphicorr_pfmet_{data_kind.lower()}"
+
+        for collections, _ in shifts:
+            met = collections["MET"]
+
+            # Clamp MET inputs to the correction range.
+            met_pt = np.clip(met.pt, 0.0, 6499.0)
+            met_phi = np.clip(met.phi, -3.15, 3.15)
+
+            # Evaluate the correction using this shift's own MET.
+            corrected_met_pt = cset[pt_corr_file].evaluate(
+                ak.to_numpy(met_pt),
+                ak.to_numpy(met_phi),
+                npvs,
+                run,
+            )
+
+            corrected_met_phi = cset[phi_corr_file].evaluate(
+                ak.to_numpy(met_pt),
+                ak.to_numpy(met_phi),
+                npvs,
+                run,
+            )
+
+            # Replace MET fields without modifying other shifts.
+            met = ak.with_field(met, corrected_met_pt, "pt")
+            met = ak.with_field(met, corrected_met_phi, "phi")
+
+            collections["MET"] = met
 
     elif year.startswith("202") and year != "2024":
-        # prepare common evaluation arguments (excluding pt_phi and variation)
-        epoch_str = f"{year[:4] + re.search(r'post(.*)', year).group(1) if 'post' in year else year[:4]}"
-
-        # schema: (met_type, epoch, dtmc, variation, met_pt, met_phi, npvGood)
-        eval_inputs = lambda var_name, pu_var="nom": (
-            var_name,
-            "PuppiMET",
-            epoch_str,
-            data_kind,
-            pu_var,
-            met_pt.to_numpy(),
-            met_phi.to_numpy(),
-            events.PV.npvsGood.to_numpy(),
+        # Determine the correction epoch.
+        epoch_str = (
+            f"{year[:4] + re.search(r'post(.*)', year).group(1)}"
+            if "post" in year
+            else year[:4]
         )
 
-        # evaluate nominal corrections
-        pt_nom = cset["met_xy_corrections"].evaluate(*eval_inputs("pt"))
-        phi_nom = cset["met_xy_corrections"].evaluate(*eval_inputs("phi"))
+        correction = cset["met_xy_corrections"]
 
-        # assign nominal values to MET
-        met["pt"] = pt_nom
-        met["phi"] = phi_nom
-        shifts[0][0]["MET"] = met
-
-        if hasattr(events, "genWeight") and corrections_config["apply_obj_syst"]:
-            # evaluate individual statistical x/y variations
-            pt_stat_xup = cset["met_xy_corrections"].evaluate(
-                *eval_inputs("pt_stat_xup")
-            )
-            pt_stat_xdn = cset["met_xy_corrections"].evaluate(
-                *eval_inputs("pt_stat_xdn")
-            )
-            pt_stat_yup = cset["met_xy_corrections"].evaluate(
-                *eval_inputs("pt_stat_yup")
-            )
-            pt_stat_ydn = cset["met_xy_corrections"].evaluate(
-                *eval_inputs("pt_stat_ydn")
+        def evaluate_xy(var_name, met_pt, met_phi):
+            """Evaluate an XY correction for a given MET and variation."""
+            return correction.evaluate(
+                var_name,
+                "PuppiMET",
+                epoch_str,
+                data_kind,
+                "nom",
+                ak.to_numpy(np.clip(met_pt, 0.0, 6499.0)),
+                ak.to_numpy(np.clip(met_phi, -3.15, 3.15)),
+                npvs,
             )
 
-            phi_stat_xup = cset["met_xy_corrections"].evaluate(
-                *eval_inputs("phi_stat_xup")
-            )
-            phi_stat_xdn = cset["met_xy_corrections"].evaluate(
-                *eval_inputs("phi_stat_xdn")
-            )
-            phi_stat_yup = cset["met_xy_corrections"].evaluate(
-                *eval_inputs("phi_stat_yup")
-            )
-            phi_stat_ydn = cset["met_xy_corrections"].evaluate(
-                *eval_inputs("phi_stat_ydn")
-            )
+        # Apply nominal XY corrections to all existing shifts.
+        for collections, _ in shifts:
+            met = collections["MET"]
 
-            # combine uncorrelated x/y variations in quadrature (up and down)
+            corrected_met_pt = evaluate_xy(
+                "pt",
+                met.pt,
+                met.phi,
+            )
+            corrected_met_phi = evaluate_xy(
+                "phi",
+                met.pt,
+                met.phi,
+            )
+            met = ak.with_field(met, corrected_met_pt, "pt")
+            met = ak.with_field(met, corrected_met_phi, "phi")
+
+            collections["MET"] = met
+
+        # Evaluate statistical XY variations only for MC.
+        if data_kind == "MC" and corrections_config["apply_obj_syst"]:
+            # Use the original nominal MET inputs, before the nominal XY
+            # correction, to evaluate the statistical variations.
+            met_pt = met_nominal_pt_raw
+            met_phi = met_nominal_phi_raw
+
+            pt_nom = evaluate_xy("pt", met_pt, met_phi)
+            phi_nom = evaluate_xy("phi", met_pt, met_phi)
+
+            # Evaluate individual statistical x/y variations.
+            pt_stat_xup = evaluate_xy("pt_stat_xup", met_pt, met_phi)
+            pt_stat_xdn = evaluate_xy("pt_stat_xdn", met_pt, met_phi)
+            pt_stat_yup = evaluate_xy("pt_stat_yup", met_pt, met_phi)
+            pt_stat_ydn = evaluate_xy("pt_stat_ydn", met_pt, met_phi)
+
+            phi_stat_xup = evaluate_xy("phi_stat_xup", met_pt, met_phi)
+            phi_stat_xdn = evaluate_xy("phi_stat_xdn", met_pt, met_phi)
+            phi_stat_yup = evaluate_xy("phi_stat_yup", met_pt, met_phi)
+            phi_stat_ydn = evaluate_xy("phi_stat_ydn", met_pt, met_phi)
+
+            # Combine uncorrelated x/y variations in quadrature.
             delta_pt_up = np.sqrt(
                 (pt_stat_xup - pt_nom) ** 2 + (pt_stat_yup - pt_nom) ** 2
             )
-            delta_pt_dn = np.sqrt(
+            delta_pt_down = np.sqrt(
                 (pt_stat_xdn - pt_nom) ** 2 + (pt_stat_ydn - pt_nom) ** 2
             )
 
             delta_phi_up = np.sqrt(
                 (phi_stat_xup - phi_nom) ** 2 + (phi_stat_yup - phi_nom) ** 2
             )
-            delta_phi_dn = np.sqrt(
+            delta_phi_down = np.sqrt(
                 (phi_stat_xdn - phi_nom) ** 2 + (phi_stat_ydn - phi_nom) ** 2
             )
 
-            met_up, met_down = met, met
-            met_up["pt"] = pt_nom + delta_pt_up
-            met_up["phi"] = phi_nom + delta_phi_up
-            met_down["pt"] = pt_nom - delta_pt_dn
-            met_down["phi"] = phi_nom - delta_phi_dn
+            # Build independent MET variations around the nominal XY-corrected MET.
+            met_nominal_xy = shifts[0][0]["MET"]
 
+            met_up = ak.with_field(
+                met_nominal_xy,
+                pt_nom + delta_pt_up,
+                "pt",
+            )
+            met_up = ak.with_field(
+                met_up,
+                phi_nom + delta_phi_up,
+                "phi",
+            )
+
+            met_down = ak.with_field(
+                met_nominal_xy,
+                pt_nom - delta_pt_down,
+                "pt",
+            )
+            met_down = ak.with_field(
+                met_down,
+                phi_nom - delta_phi_down,
+                "phi",
+            )
+
+            # Keep all nominal object collections for the XY statistical shifts.
             shifts += [
                 (
                     {

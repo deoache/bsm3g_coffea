@@ -403,12 +403,27 @@ def apply_rochester_corrections_run3(
     shifts: dict,
     corrections_config: dict,
 ):
+    """
+    Apply Run 3 muon scale and resolution corrections and propagate them to MET.
+
+    The nominal muon correction is propagated to every existing MET shift.
+    Muon scale and resolution variations are then created using the nominal
+    jet-corrected MET as their reference, so that each variation changes only
+    the muon correction while keeping all other objects nominal.
+    """
+    # load correction set
     cset = correctionlib.CorrectionSet.from_file(correction_files["muon_ss"][year])
 
-    events["Muon", "pt_raw"] = ak.ones_like(events.Muon.pt) * events.Muon.pt
+    # Store the original muon pT before applying any corrections.
+    # This value is needed to propagate the momentum difference between the
+    # original and corrected muons to MET.
+    events["Muon", "pt_raw"] = events.Muon.pt
     muons = events.Muon
+
+    # Calculate the nominal muon momentum correction.
     if hasattr(events, "genWeight"):
-        # MC: both scale correction to gen Z peak AND resolution correction to Z width in data
+        # MC: apply the scale correction and the additional resolution
+        # correction needed to reproduce the muon momentum resolution in data.
         muon_ptscalecorr = pt_scale(
             False,
             muons.pt,
@@ -418,6 +433,7 @@ def apply_rochester_corrections_run3(
             cset,
             nested=True,
         )
+
         muon_ptcorr = pt_resol(
             muon_ptscalecorr,
             muons.eta,
@@ -426,7 +442,7 @@ def apply_rochester_corrections_run3(
             nested=True,
         )
     else:
-        # Data: only scale correction to gen Z peak
+        # Data: apply only the scale correction.
         muon_ptcorr = pt_scale(
             True,
             muons.pt,
@@ -437,65 +453,125 @@ def apply_rochester_corrections_run3(
             nested=True,
         )
 
-    # add nominal scale & smearing correction to shifts
+    # Update the nominal muon collection in every existing shift.
     muons["pt"] = muon_ptcorr
-    for i in range(len(shifts)):
-        shifts[i][0]["Muon"] = muons
+    for collections, _ in shifts:
+        collections["Muon"] = muons
 
-    # Propagate muon pT changes to MET
-    nominal_met, met = copy.copy(shifts[0][0]["MET"]), copy.copy(shifts[0][0]["MET"])
-    corrected_met_pt, corrected_met_phi = corrected_polar_met(
+    # Propagate the nominal muon correction to all existing MET shifts.
+    # Save the nominal MET before applying the muon correction. This MET
+    # already includes the nominal jet corrections and will be used as the
+    # reference for the muon scale and resolution variations.
+    met = copy.copy(shifts[0][0]["MET"])
+
+    # Nominal MET: MET_original + ΔJ + Δμ
+    nominal_met = copy.copy(met)
+    nominal_met["pt"], nominal_met["phi"] = corrected_polar_met(
         met_pt=nominal_met.pt,
         met_phi=nominal_met.phi,
         other_phi=muons.phi,
         other_pt_old=muons.pt_raw,
         other_pt_new=muons.pt,
     )
-    nominal_met["pt"] = corrected_met_pt
-    nominal_met["phi"] = corrected_met_phi
-    # update nominal MET
     shifts[0][0]["MET"] = nominal_met
 
-    # systematics
+    # Apply the same nominal muon correction to every previously existing
+    # systematic shift. This ensures that JES/JER variations also contain
+    # the nominal muon correction.
+
+    # For example:
+    # JESUp: MET_original + ΔJ_JESUp -> MET_original + ΔJ_JESUp + Δμ
+    # JERUp: MET_original + ΔJ_JERUp -> MET_original + ΔJ_JERUp + Δμ
+    for i in range(1, len(shifts)):
+        current_met = copy.copy(shifts[i][0]["MET"])
+        current_met["pt"], current_met["phi"] = corrected_polar_met(
+            met_pt=current_met.pt,
+            met_phi=current_met.phi,
+            other_phi=muons.phi,
+            other_pt_old=muons.pt_raw,
+            other_pt_new=muons.pt,
+        )
+        shifts[i][0]["MET"] = current_met
+
+    # Calculate muon scale and resolution variations (MC only).
     if hasattr(events, "genWeight") and corrections_config["apply_obj_syst"]:
+        # Calculate the variations around the nominal scale and resolution
+        # corrections. These functions use the nominal corrected muon pT
+        # as their reference.
         muons_ptscalecorr_up = pt_scale_var(
-            muon_ptcorr, muons.eta, muons.phi, muons.charge, "up", cset, nested=True
+            muon_ptcorr,
+            muons.eta,
+            muons.phi,
+            muons.charge,
+            "up",
+            cset,
+            nested=True,
         )
         muons_ptscalecorr_down = pt_scale_var(
-            muon_ptcorr, muons.eta, muons.phi, muons.charge, "dn", cset, nested=True
+            muon_ptcorr,
+            muons.eta,
+            muons.phi,
+            muons.charge,
+            "down",
+            cset,
+            nested=True,
         )
         muons_ptcorr_resol_up = pt_resol_var(
-            muon_ptscalecorr, muon_ptcorr, muons.eta, "up", cset, nested=True
+            muon_ptscalecorr,
+            muon_ptcorr,
+            muons.eta,
+            "up",
+            cset,
+            nested=True,
         )
         muons_ptcorr_resol_down = pt_resol_var(
-            muon_ptscalecorr, muon_ptcorr, muons.eta, "dn", cset, nested=True
+            muon_ptscalecorr,
+            muon_ptcorr,
+            muons.eta,
+            "down",
+            cset,
+            nested=True,
         )
+        # Create independent muon collections for each variation.
+        # The original pT is preserved in pt_raw, while pt is replaced by
+        # the corresponding varied corrected momentum.
+        mu_up = copy.copy(events.Muon)
+        mu_down = copy.copy(events.Muon)
+        mu_resol_up = copy.copy(events.Muon)
+        mu_resol_down = copy.copy(events.Muon)
 
-        mu_scale_up, mu_scale_down = events.Muon, events.Muon
-        mu_resol_up, mu_resol_down = events.Muon, events.Muon
-
-        mu_scale_up["pt"] = muons_ptscalecorr_up
-        mu_scale_down["pt"] = muons_ptscalecorr_down
+        mu_up["pt"] = muons_ptscalecorr_up
+        mu_down["pt"] = muons_ptscalecorr_down
         mu_resol_up["pt"] = muons_ptcorr_resol_up
         mu_resol_down["pt"] = muons_ptcorr_resol_down
 
-        # Propagate muon pT changes to MET
-        met_up, met_down = met, met
+        # Propagate the muon variations to MET.
+        # All muon variations start from the same reference MET:
+        # MET_original + ΔJ.
+        # The nominal muon correction is replaced by the corresponding
+        # varied muon correction. Each MET variation must be an independent
+        # copy to avoid modifying other systematic shifts.
+        met_up = copy.copy(met)
+        met_down = copy.copy(met)
+        met_resol_up = copy.copy(met)
+        met_resol_down = copy.copy(met)
+
+        # Muon scale variations.
         met_up["pt"], met_up["phi"] = corrected_polar_met(
             met_pt=met_up.pt,
             met_phi=met_up.phi,
-            other_phi=mu_scale_up.phi,
-            other_pt_old=mu_scale_up.pt_raw,
-            other_pt_new=mu_scale_up.pt,
+            other_phi=mu_up.phi,
+            other_pt_old=mu_up.pt_raw,
+            other_pt_new=mu_up.pt,
         )
         met_down["pt"], met_down["phi"] = corrected_polar_met(
             met_pt=met_down.pt,
             met_phi=met_down.phi,
-            other_phi=mu_scale_down.phi,
-            other_pt_old=mu_scale_down.pt_raw,
-            other_pt_new=mu_scale_down.pt,
+            other_phi=mu_down.phi,
+            other_pt_old=mu_down.pt_raw,
+            other_pt_new=mu_down.pt,
         )
-        met_resol_up, met_resol_down = met, met
+        # Muon resolution variations.
         met_resol_up["pt"], met_resol_up["phi"] = corrected_polar_met(
             met_pt=met_resol_up.pt,
             met_phi=met_resol_up.phi,
@@ -504,19 +580,23 @@ def apply_rochester_corrections_run3(
             other_pt_new=mu_resol_up.pt,
         )
         met_resol_down["pt"], met_resol_down["phi"] = corrected_polar_met(
-            met_pt=met_down.pt,
-            met_phi=met_down.phi,
+            met_pt=met_resol_down.pt,
+            met_phi=met_resol_down.phi,
             other_phi=mu_resol_down.phi,
             other_pt_old=mu_resol_down.pt_raw,
             other_pt_new=mu_resol_down.pt,
         )
 
+        # Append the muon systematic variations.
+        # All variations use the nominal jet collection. Other object
+        # corrections (e.g. electrons) will be propagated to these shifts
+        # later in the correction sequence.
         shifts += [
             (
                 {
                     "Jet": shifts[0][0]["Jet"],
                     "MET": met_up,
-                    "Muon": mu_scale_up,
+                    "Muon": mu_up,
                 },
                 f"CMS_scale_m_{year[:4]}Up",
             )
@@ -526,7 +606,7 @@ def apply_rochester_corrections_run3(
                 {
                     "Jet": shifts[0][0]["Jet"],
                     "MET": met_down,
-                    "Muon": mu_scale_down,
+                    "Muon": mu_down,
                 },
                 f"CMS_scale_m_{year[:4]}Down",
             )

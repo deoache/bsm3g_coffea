@@ -123,35 +123,54 @@ def apply_tau_energy_scale_corrections(
             "nom",
         )
 
+    # Update the nominal tau collection in every existing shift.
     corrected_pt = ak.where(mask, taus_filter.pt_raw * sf_valid, flat_taus.pt_raw)
     corrected_mass = ak.where(mask, taus_filter.mass_raw * sf_valid, flat_taus.mass_raw)
+    taus = events.Tau
+    taus["pt"] = ak.unflatten(corrected_pt, counts)
+    taus["mass"] = ak.unflatten(corrected_mass, counts)
+    for collections, _ in shifts:
+        collections["Tau"] = taus
 
-    events["Tau", "pt"] = ak.unflatten(corrected_pt, counts)
-    events["Tau", "mass"] = ak.unflatten(corrected_mass, counts)
-    for i in range(len(shifts)):
-        shifts[i][0]["Tau"] = events.Tau
+    # Propagate the nominal tau correction to all existing METs.
+    # Save the nominal MET before applying the tau correction.
+    # This MET already contains the nominal jet, muon and electron corrections.
+    # The saved reference will also be used to construct the tau energy
+    # variations in the following steps.
+    met = copy.copy(shifts[0][0]["MET"])
 
-    # Propagate tau pT changes to MET
-    met_name = "MET" if run == "2" else "PuppiMET"
-    events[met_name, "pt_raw"] = ak.ones_like(events[met_name].pt) * events[met_name].pt
-    events[met_name, "phi_raw"] = (
-        ak.ones_like(events[met_name].phi) * events[met_name].phi
+    # Propagate tau nominal correction to nominal MET
+    # MET_original + ΔJ + Δμ + Δe + Δτ
+    nominal_met = copy.copy(shifts[0][0]["MET"])
+    nominal_met["pt"], nominal_met["phi"] = corrected_polar_met(
+        met_pt=nominal_met.pt,
+        met_phi=nominal_met.phi,
+        other_phi=taus.phi,
+        other_pt_old=taus.pt_raw,
+        other_pt_new=taus.pt,
     )
-    corrected_met_pt, corrected_met_phi = corrected_polar_met(
-        met_pt=events[met_name].pt,
-        met_phi=events[met_name].phi,
-        other_phi=events.Tau.phi,
-        other_pt_old=events.Tau.pt_raw,
-        other_pt_new=events.Tau.pt,
-    )
-    events[met_name, "pt"] = corrected_met_pt
-    events[met_name, "phi"] = corrected_met_phi
-    shifts[0][0]["MET"] = events[met_name]
+    shifts[0][0]["MET"] = nominal_met
+
+    # Apply the same nominal tau correction to every previously existing
+    # systematic shift. This ensures that jet, muon and electron variations also contain
+    # the nominal tau correction.
+
+    # For example:
+    # JesUp       MET_original + ΔJesUp   + Δμ + Δe    -->   MET_original + ΔJesUp   + Δμ + Δe + Δτ
+    # JesDown     MET_original + ΔJesDown + Δμ + Δe    -->   MET_original + ΔJesDown + Δμ + Δe + Δτ
+    for i in range(1, len(shifts)):
+        current_met = copy.copy(shifts[i][0]["MET"])
+        current_met["pt"], current_met["phi"] = corrected_polar_met(
+            met_pt=current_met.pt,
+            met_phi=current_met.phi,
+            other_phi=taus.phi,
+            other_pt_old=taus.pt_raw,
+            other_pt_new=taus.pt,
+        )
+        shifts[i][0]["MET"] = current_met
 
     # uncertainties
     if hasattr(events, "genWeight") and corrections_config["apply_obj_syst"]:
-        tau_up, tau_down = events.Tau, events.Tau
-
         if run == "2":
             sf_up_valid = cset["tau_energy_scale"].evaluate(
                 pt_valid, eta_valid, dm_valid, genmatch_valid, deep_tau, "up"
@@ -199,21 +218,21 @@ def apply_tau_energy_scale_corrections(
         )
         tau_down = ak.unflatten(down, counts)
 
-        # Propagate muon pT changes to MET
-        met_up, met_down = events[met_name], events[met_name]
+        # Propagate tau pT changes to MET
+        met_up, met_down = copy.copy(met), copy.copy(met)
         met_up["pt"], met_up["phi"] = corrected_polar_met(
-            events[met_name].pt_raw,
-            events[met_name].phi_raw,
-            tau_up.phi,
-            tau_up.pt_raw,
-            tau_up.pt,
+            met_pt=met_up.pt,
+            met_phi=met_up.phi,
+            other_phi=tau_up.phi,
+            other_pt_old=tau_up.pt_raw,
+            other_pt_new=tau_up.pt,
         )
         met_down["pt"], met_down["phi"] = corrected_polar_met(
-            events[met_name].pt_raw,
-            events[met_name].phi_raw,
-            tau_down.phi,
-            tau_down.pt_raw,
-            tau_down.pt,
+            met_pt=met_down.pt,
+            met_phi=met_down.phi,
+            other_phi=tau_down.phi,
+            other_pt_old=tau_down.pt_raw,
+            other_pt_new=tau_down.pt,
         )
 
         shifts += [
